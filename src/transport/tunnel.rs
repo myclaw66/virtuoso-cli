@@ -10,6 +10,24 @@ use std::process::{Command, Stdio};
 
 static RESOURCES: Dir = include_dir!("$CARGO_MANIFEST_DIR/resources");
 
+/// Verify that a PID belongs to an SSH process by checking /proc/<pid>/cmdline.
+/// Returns false if the process doesn't exist or isn't SSH (PID reuse protection).
+fn verify_ssh_pid(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        let cmdline_path = format!("/proc/{pid}/cmdline");
+        if let Ok(cmdline) = std::fs::read_to_string(&cmdline_path) {
+            cmdline.contains("ssh")
+        } else {
+            false
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        true // no /proc on non-unix, fall back to trusting PID
+    }
+}
+
 pub struct SSHClient {
     pub runner: SSHRunner,
     pub port: u16,
@@ -52,7 +70,11 @@ impl SSHClient {
         if let Some(pid) = self.tunnel_pid {
             #[cfg(unix)]
             {
-                let _ = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+                if verify_ssh_pid(pid) {
+                    let _ = unsafe { libc::kill(pid as i32, libc::SIGTERM) };
+                } else {
+                    tracing::warn!("PID {pid} is not an SSH process, skipping kill");
+                }
             }
             #[cfg(not(unix))]
             {
@@ -79,7 +101,7 @@ impl SSHClient {
         if let Some(pid) = self.tunnel_pid {
             #[cfg(unix)]
             {
-                unsafe { libc::kill(pid as i32, 0) == 0 }
+                verify_ssh_pid(pid) && unsafe { libc::kill(pid as i32, 0) == 0 }
             }
             #[cfg(not(unix))]
             {
@@ -177,21 +199,22 @@ impl SSHClient {
             .spawn()
             .map_err(|e| VirtuosoError::Ssh(format!("failed to start tunnel: {e}")))?;
 
-        std::thread::sleep(std::time::Duration::from_millis(500));
-
         let pid = output.id();
         self.tunnel_pid = Some(pid);
 
         use std::net::TcpStream;
-        if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
-            Ok(())
-        } else {
-            Err(VirtuosoError::Ssh("tunnel port not reachable".into()))
+        for _ in 0..10 {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            if TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+                return Ok(());
+            }
         }
+        Err(VirtuosoError::Ssh("tunnel port not reachable".into()))
     }
 
     fn save_state(&self) -> Result<()> {
         let state = TunnelState {
+            version: 1,
             port: self.port,
             pid: self.tunnel_pid.unwrap_or(0),
             remote_host: self.runner.host.clone(),

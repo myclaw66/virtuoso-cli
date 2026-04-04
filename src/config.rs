@@ -18,18 +18,30 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Result<Self> {
-        let _ = dotenv();
+        if let Err(e) = dotenv() {
+            if !e.not_found() {
+                tracing::warn!("failed to load .env: {e}");
+            }
+        }
 
         let remote_host = env::var("VB_REMOTE_HOST")
             .map_err(|_| VirtuosoError::Config("VB_REMOTE_HOST not set".into()))?;
 
+        let port: u16 = env::var("VB_PORT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(65432);
+
+        if port == 0 {
+            return Err(VirtuosoError::Config(
+                "VB_PORT must be between 1 and 65535".into(),
+            ));
+        }
+
         Ok(Self {
             remote_host,
             remote_user: env::var("VB_REMOTE_USER").ok(),
-            port: env::var("VB_PORT")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(65432),
+            port,
             jump_host: env::var("VB_JUMP_HOST").ok(),
             jump_user: env::var("VB_JUMP_USER").ok(),
             timeout: env::var("VB_TIMEOUT")

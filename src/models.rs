@@ -94,8 +94,14 @@ pub struct RemoteSshEnv {
     pub jump_user: Option<String>,
 }
 
+fn default_version() -> u32 {
+    1
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TunnelState {
+    #[serde(default = "default_version")]
+    pub version: u32,
     pub port: u16,
     pub pid: u32,
     pub remote_host: String,

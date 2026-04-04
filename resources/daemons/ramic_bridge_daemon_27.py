@@ -226,7 +226,10 @@ def handle_external_connection(conn, addr):
         timeout_flag = True
         if watchdog_timer:
             watchdog_timer.cancel()
-        conn.shutdown(socket.SHUT_RDWR)
+        try:
+            conn.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
         conn.close()
 
 def start_server():

@@ -1,4 +1,5 @@
-use crate::error::Result;
+use crate::error::{Result, VirtuosoError};
+use serde_json::{json, Value};
 use std::io::Write;
 use std::path::Path;
 
@@ -29,19 +30,28 @@ VB_KEEP_REMOTE_FILES=false
 # VB_SPECTRE_ARGS=
 "#;
 
-pub fn run() -> Result<()> {
+pub fn run(if_not_exists: bool) -> Result<Value> {
     let env_path = Path::new(".env");
 
     if env_path.exists() {
-        println!(".env already exists, skipping");
-        return Ok(());
+        if if_not_exists {
+            return Ok(json!({
+                "status": "skipped",
+                "reason": ".env already exists",
+                "path": ".env",
+            }));
+        }
+        return Err(VirtuosoError::Conflict(
+            ".env already exists (use --if-not-exists to skip)".into(),
+        ));
     }
 
     let mut file = std::fs::File::create(env_path)?;
     file.write_all(ENV_TEMPLATE.as_bytes())?;
 
-    println!(".env template created");
-    println!("edit .env and set VB_REMOTE_HOST, then run: virtuoso start");
-
-    Ok(())
+    Ok(json!({
+        "status": "created",
+        "path": ".env",
+        "next_step": "Edit .env and set VB_REMOTE_HOST, then run: virtuoso tunnel start",
+    }))
 }

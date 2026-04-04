@@ -6,6 +6,12 @@ use std::time::Instant;
 
 use crate::models::RemoteTaskResult;
 
+fn shell_quote(s: &str) -> String {
+    shlex::try_quote(s)
+        .unwrap_or_else(|_| std::borrow::Cow::Borrowed(s))
+        .into_owned()
+}
+
 pub struct SSHRunner {
     pub host: String,
     pub user: Option<String>,
@@ -129,8 +135,9 @@ impl SSHRunner {
             .to_string_lossy();
 
         let mut ssh = self.build_ssh_cmd();
+        let quoted_dir = shell_quote(&remote_dir);
         ssh.arg("sh").arg("-c").arg(format!(
-            "mkdir -p {remote_dir} && cd {remote_dir} && tar xf -"
+            "mkdir -p {quoted_dir} && cd {quoted_dir} && tar xf -"
         ));
         ssh.stdin(tar_stdout);
 
@@ -154,7 +161,8 @@ impl SSHRunner {
             .unwrap_or_else(|| std::path::Path::new("."))
             .to_string_lossy();
 
-        let mkdir = self.run_command(&format!("mkdir -p {remote_dir}"), None)?;
+        let quoted_dir = shell_quote(&remote_dir);
+        let mkdir = self.run_command(&format!("mkdir -p {quoted_dir}"), None)?;
         if !mkdir.success {
             return Err(VirtuosoError::Ssh(format!(
                 "failed to create remote dir: {}",
@@ -163,7 +171,8 @@ impl SSHRunner {
         }
 
         let mut cmd = self.build_ssh_cmd();
-        cmd.arg("sh").arg("-c").arg(format!("cat > {remote}"));
+        let quoted_remote = shell_quote(remote);
+        cmd.arg("sh").arg("-c").arg(format!("cat > {quoted_remote}"));
 
         let output = cmd
             .stdin(Stdio::piped())

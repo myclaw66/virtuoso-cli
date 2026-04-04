@@ -10,6 +10,7 @@ use std::time::Instant;
 
 const STX: u8 = 0x02;
 const NAK: u8 = 0x15;
+const MAX_RESPONSE_SIZE: usize = 100 * 1024 * 1024; // 100MB
 
 pub struct VirtuosoClient {
     host: String,
@@ -75,8 +76,12 @@ impl VirtuosoClient {
         let timeout = timeout.unwrap_or(self.timeout);
         let start = Instant::now();
 
-        let mut stream = TcpStream::connect(format!("{}:{}", self.host, self.port))
-            .map_err(|e| VirtuosoError::Connection(e.to_string()))?;
+        let addr: std::net::SocketAddr = format!("{}:{}", self.host, self.port)
+            .parse()
+            .map_err(|e| VirtuosoError::Connection(format!("invalid address: {e}")))?;
+        let mut stream =
+            TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(timeout))
+                .map_err(|e| VirtuosoError::Connection(e.to_string()))?;
         stream
             .set_read_timeout(Some(std::time::Duration::from_secs(timeout)))
             .ok();
@@ -98,7 +103,15 @@ impl VirtuosoClient {
         loop {
             match stream.read(&mut buf) {
                 Ok(0) => break,
-                Ok(n) => data.extend_from_slice(&buf[..n]),
+                Ok(n) => {
+                    if data.len() + n > MAX_RESPONSE_SIZE {
+                        return Err(VirtuosoError::Execution(format!(
+                            "response exceeds {}MB limit",
+                            MAX_RESPONSE_SIZE / 1024 / 1024
+                        )));
+                    }
+                    data.extend_from_slice(&buf[..n]);
+                }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                     return Err(VirtuosoError::Timeout(timeout));
                 }
@@ -156,6 +169,10 @@ impl VirtuosoClient {
         view: &str,
         mode: &str,
     ) -> Result<VirtuosoResult> {
+        let lib = escape_skill_string(lib);
+        let cell = escape_skill_string(cell);
+        let view = escape_skill_string(view);
+        let mode = escape_skill_string(mode);
         let skill = format!(
             r#"geOpenCellView(?libName "{lib}" ?cellName "{cell}" ?viewName "{view}" ?mode "{mode}")"#
         );
@@ -175,9 +192,11 @@ impl VirtuosoClient {
             r#"let((cv) cv = geGetEditCellView() list(cv~>libName cv~>cellName cv~>viewName))"#,
             None,
         )?;
-        let parts: Vec<&str> = result.output.trim().split_whitespace().collect();
+        let cleaned = result.output.trim().trim_matches(|c| c == '(' || c == ')');
+        let parts: Vec<&str> = cleaned.split_whitespace().collect();
         if parts.len() >= 3 {
-            Ok((parts[0].into(), parts[1].into(), parts[2].into()))
+            let strip = |s: &str| s.trim_matches('"').to_string();
+            Ok((strip(parts[0]), strip(parts[1]), strip(parts[2])))
         } else {
             Err(VirtuosoError::Execution(
                 "failed to get current design".into(),
@@ -195,7 +214,8 @@ impl VirtuosoClient {
 
         self.upload_file(local_path, &remote_path)?;
 
-        let skill = format!(r#"(load "{remote_path}")"#);
+        let remote_path_escaped = escape_skill_string(&remote_path);
+        let skill = format!(r#"(load "{remote_path_escaped}")"#);
         self.execute_skill(&skill, None)
     }
 
@@ -237,6 +257,7 @@ impl VirtuosoClient {
     }
 
     pub fn run_shell_command(&self, cmd: &str) -> Result<VirtuosoResult> {
+        let cmd = escape_skill_string(cmd);
         let skill = format!(r#"(csh "{cmd}")"#);
         self.execute_skill(&skill, None)
     }
@@ -250,7 +271,7 @@ fn is_port_open(port: u16) -> bool {
     TcpStream::connect(format!("127.0.0.1:{port}")).is_ok()
 }
 
-fn escape_skill_string(s: &str) -> String {
+pub fn escape_skill_string(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', "\\n")

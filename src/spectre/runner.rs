@@ -130,11 +130,32 @@ impl SpectreSimulator {
             cmd.arg(arg);
         }
 
-        let status = cmd
+        let mut child = cmd
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .status()
+            .spawn()
             .map_err(|e| VirtuosoError::Execution(format!("spectre failed to start: {e}")))?;
+
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_secs(self.timeout);
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(s)) => break s,
+                Ok(None) => {
+                    if std::time::Instant::now() > deadline {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        return Err(VirtuosoError::Timeout(self.timeout));
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                }
+                Err(e) => {
+                    return Err(VirtuosoError::Execution(format!(
+                        "failed to wait on spectre: {e}"
+                    )))
+                }
+            }
+        };
 
         let log_content = fs::read_to_string(&log_path).unwrap_or_default();
 

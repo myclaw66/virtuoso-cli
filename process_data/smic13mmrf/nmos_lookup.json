@@ -2,6 +2,12 @@
   "process": "smic13mmrf",
   "device": "n12",
   "w_testbench": 1e-6,
+  "w_unit": "meters",
+  "id_unit": "amperes (absolute current at w_testbench)",
+  "idw_unit": "deprecated, use id/w_testbench instead",
+  "gain_unit": "V/V (gm/gds)",
+  "ft_unit": "Hz",
+  "sizing_formula": "W_design = Id_needed / (id / w_testbench) = Id_needed / id * w_testbench_in_um",
   "characterized": "2026-04-05",
   "data": [
     {

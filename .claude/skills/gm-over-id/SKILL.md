@@ -44,13 +44,21 @@ GBW = gm₁ / (2π · CL)
 | 8-15 | 中等反型 | 通用放大器（最常用） |
 | 15-25 | 弱反型 | 低功耗、高增益 |
 
-### Step 3: 查表得 Id/W → 计算 W
+### Step 3: 查表得 Id → 计算 W
 
 ```
-Id = gm / (gm/Id)
-Id/W = lookup(gm/Id, L)  ← 仿真曲线
-W = Id / (Id/W)
+Id_need = gm / (gm/Id)
+id_sim  = lookup(gm/Id, L)   ← 查找表中 W=1µm 时的绝对电流 (A)
+
+W = Id_need / id_sim * W_tb  (W_tb = 1µm)
+  = Id_need / id_sim          (结果单位 µm)
+
+例: gm/Id=14, L=500n → id_sim=5.01µA (at W=1µm)
+    Id_need=13.5µA → W = 13.5/5.01 × 1 = 2.7µm
 ```
+
+**注意**: lookup JSON 中的 `id` 是绝对电流（A），不是电流密度。
+`idw` 字段已废弃，直接用 `id / w_testbench` 计算。
 
 ### Step 4: 选择 L（增益-速度折中）
 

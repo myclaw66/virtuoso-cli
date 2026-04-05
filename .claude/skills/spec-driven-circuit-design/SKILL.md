@@ -107,6 +107,33 @@ CHECK 6: Speed vs Area
   Area_max = 5000µm² → limits total W
 ```
 
+### Topology-Aware Power Calculation
+
+```
+Telescopic OTA:
+  I_total = I_tail
+  Branches: 1 (tail → diff pair → cascode load)
+
+Folded-Cascode OTA:
+  I_total = I_tail + 2 × I_fold
+  = 2×Id_input + 2×I_fold
+  Typically I_fold ≈ 1.2 × Id_input
+  → I_total ≈ 4.4 × Id_input
+
+Two-Stage Miller:
+  I_total = I_tail_1 + I_stage2
+  = 2×Id_input + Id_output
+  Typically Id_output ≈ 3-5 × Id_input (for PM)
+
+Three-Stage:
+  I_total = I_1 + I_2 + I_3 + bias
+```
+
+Use `virtuoso design size` to compute per-transistor sizing:
+```bash
+virtuoso design size --gmid 14 --l 500e-9 --gm <gm_req> --pdk <pdk>
+```
+
 ### Automated Feasibility via Virtuoso-CLI
 
 ```bash

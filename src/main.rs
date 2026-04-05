@@ -84,6 +84,14 @@ enum Commands {
     #[command(subcommand)]
     Sim(SimCmd),
 
+    /// Process characterization (gm/Id lookup table generation)
+    #[command(subcommand)]
+    Process(ProcessCmd),
+
+    /// Transistor sizing from gm/Id lookup tables
+    #[command(subcommand)]
+    Design(DesignCmd),
+
     /// Show CLI command schema as JSON for agent introspection
     #[command(
         long_about = "Show the full command schema as JSON, useful for AI agent discovery.\n\n\
@@ -381,6 +389,99 @@ enum SimCmd {
     Results,
 }
 
+#[derive(Subcommand)]
+enum ProcessCmd {
+    /// Characterize a process node (generate gm/Id lookup tables)
+    #[command(
+        long_about = "Sweep VGS × L on a single-transistor testbench to generate gm/Id lookup tables.\n\n\
+            Examples:\n  \
+            virtuoso process char --lib FT0001A_SH --cell gmid --inst /NM0 --type nmos\n  \
+            virtuoso process char --lib myLib --cell gmid_p --inst /PM0 --type pmos --output process_data/myPDK"
+    )]
+    Char {
+        /// Library name
+        #[arg(long)]
+        lib: String,
+        /// Cell name (single-transistor testbench)
+        #[arg(long)]
+        cell: String,
+        /// View name
+        #[arg(long, default_value = "schematic")]
+        view: String,
+        /// Instance path (e.g. /NM0 or /PM0)
+        #[arg(long, default_value = "/NM0")]
+        inst: String,
+        /// Device type: nmos or pmos
+        #[arg(long, default_value = "nmos")]
+        r#type: String,
+        /// L values to sweep (comma-separated, in meters)
+        #[arg(long, default_value = "200e-9,500e-9,1e-6")]
+        l_values: String,
+        /// VGS start voltage
+        #[arg(long, default_value = "0.3")]
+        vgs_start: f64,
+        /// VGS stop voltage
+        #[arg(long, default_value = "1.1")]
+        vgs_stop: f64,
+        /// VGS step voltage
+        #[arg(long, default_value = "0.05")]
+        vgs_step: f64,
+        /// Output directory for lookup JSON
+        #[arg(long, default_value = "process_data/default")]
+        output: String,
+        /// Timeout per simulation point
+        #[arg(long, short, default_value = "60")]
+        timeout: u64,
+    },
+}
+
+#[derive(Subcommand)]
+enum DesignCmd {
+    /// Size a transistor from gm/Id lookup table
+    #[command(
+        long_about = "Calculate W/L from gm or Id requirement using process lookup table.\n\n\
+            Examples:\n  \
+            virtuoso design size --gmid 14 --l 500e-9 --gm 188e-6 --pdk smic13mmrf\n  \
+            virtuoso design size --gmid 10 --l 1e-6 --id 50e-6 --pdk smic13mmrf --type pmos"
+    )]
+    Size {
+        /// Target gm/Id value
+        #[arg(long)]
+        gmid: f64,
+        /// Channel length (meters)
+        #[arg(long)]
+        l: f64,
+        /// Required gm (S) — calculates W from this
+        #[arg(long)]
+        gm: Option<f64>,
+        /// Required Id (A) — alternative to gm
+        #[arg(long)]
+        id: Option<f64>,
+        /// PDK name (must have lookup in process_data/)
+        #[arg(long, default_value = "smic13mmrf")]
+        pdk: String,
+        /// Device type: nmos or pmos
+        #[arg(long, default_value = "nmos")]
+        r#type: String,
+    },
+
+    /// Explore gm/Id design space for a process
+    #[command(
+        long_about = "Display full gm/Id lookup table for a process/device.\n\n\
+            Examples:\n  \
+            virtuoso design explore --pdk smic13mmrf\n  \
+            virtuoso design explore --pdk smic13mmrf --type pmos"
+    )]
+    Explore {
+        /// PDK name
+        #[arg(long, default_value = "smic13mmrf")]
+        pdk: String,
+        /// Device type
+        #[arg(long, default_value = "nmos")]
+        r#type: String,
+    },
+}
+
 fn parse_key_val(s: &str) -> std::result::Result<(String, String), String> {
     let pos = s.find('=').ok_or_else(|| format!("invalid KEY=VALUE: no '=' in '{s}'"))?;
     Ok((s[..pos].to_string(), s[pos + 1..].to_string()))
@@ -481,6 +582,22 @@ fn main() {
             } => commands::sim::sweep(&var, from, to, step, &analysis, &measure, timeout),
             SimCmd::Corner { file, timeout } => commands::sim::corner(&file, timeout),
             SimCmd::Results => commands::sim::results(),
+        },
+        Commands::Process(cmd) => match cmd {
+            ProcessCmd::Char {
+                lib, cell, view, inst, r#type, l_values, vgs_start, vgs_stop, vgs_step, output, timeout,
+            } => {
+                let l_vals: Vec<f64> = l_values.split(',').filter_map(|s| s.trim().parse().ok()).collect();
+                commands::process::char(&lib, &cell, &view, &inst, &r#type, &l_vals, vgs_start, vgs_stop, vgs_step, &output, timeout)
+            }
+        },
+        Commands::Design(cmd) => match cmd {
+            DesignCmd::Size { gmid, l, gm, id, pdk, r#type } => {
+                commands::design::size(gmid, l, gm, id, &pdk, &r#type, format)
+            }
+            DesignCmd::Explore { pdk, r#type } => {
+                commands::design::explore(&pdk, &r#type, format)
+            }
         },
         Commands::Schema { all, noun, verb } => {
             let schema = if all || noun.is_none() {

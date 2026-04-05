@@ -300,10 +300,21 @@ Power (µW)          32      28      38      31      33      <50 ✓
 When switching to a new PDK (e.g., TSMC 22nm):
 
 1. **Create testbench**: Single NMOS + PMOS with VGS/L as design variables
-2. **Run characterization**: Use the sweep script above  
-3. **Save lookup tables**: `process_data/tsmc22ull/nmos_lookup.json`
-4. **Re-size**: Apply same gm/Id targets, lookup new Id/W values
+2. **Run characterization**: `virtuoso process char --lib myLib --cell gmid_n --inst /NM0 --type nmos --output process_data/tsmc22ull`
+3. **Save lookup tables**: Auto-generated at `process_data/tsmc22ull/nmos_lookup.json`
+4. **Re-size**: `virtuoso design size --gmid 14 --l 100e-9 --gm 188e-6 --pdk tsmc22ull`
 5. **Validate**: Run PVT corners with new models
+
+### Quick Validation with Verilog-A Ideal Model
+
+Before transistor-level design, validate specs with an ideal behavioral model.
+Use the `/veriloga` skill to create an ideal opamp with target specs:
+
+```bash
+# Create ideal opamp with your target gain/GBW/SR
+# Then simulate to verify specs are achievable with the topology
+# This catches spec conflicts before investing in transistor sizing
+```
 
 The **gm/Id targets remain the same** across processes — only the lookup tables (Id/W, gain, fT vs gm/Id) change. This is the core portability advantage.
 

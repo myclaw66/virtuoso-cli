@@ -88,3 +88,47 @@ virtuoso sim measure --analysis ac --expr 'value(phase(VF("/OUT")) cross(dB20(VF
 | `dB20(wave)` | 20*log10(magnitude) |
 | `phase(wave)` | Phase in degrees |
 | `bandwidth(wave level)` | -3dB bandwidth |
+| `integ(wave)` | Integral over sweep range |
+| `rms(wave)` | RMS value |
+| `average(wave)` | Average value |
+| `delay(wave1 val1 edge1 wave2 val2 edge2 n)` | Propagation delay |
+| `slewRate(wave pct1 pct2 dir)` | Slew rate |
+| `settlingTime(wave final tol)` | Settling time |
+
+## Noise measurements
+
+```bash
+# Run noise analysis first
+virtuoso sim run --analysis noise --start 10 --stop 100e3 --dec 20 --timeout 120
+
+# Spot noise at 1kHz
+virtuoso sim measure --analysis noise \
+  --expr 'value(getData("/OUT" ?result "noise") 1e3)'
+
+# Integrated noise (10Hz-100kHz)
+virtuoso sim measure --analysis noise \
+  --expr 'integ(getData("/OUT" ?result "noise") 10 100e3)'
+```
+
+## Common amplifier measurements (complete recipe)
+
+```bash
+# === DC operating point ===
+virtuoso sim run --analysis dc --param saveOppoint=t
+virtuoso sim measure --analysis dcOp \
+  --expr 'value(VDC("/OUT"))' \
+  --expr 'value(IDC("/M1/D"))'
+
+# === AC: gain, GBW, phase margin ===
+virtuoso sim run --analysis ac --start 1 --stop 10e9 --dec 20
+DC_GAIN=$(virtuoso sim measure --analysis ac --expr 'dB20(value(VF("/OUT") 1))' --format json | jq -r '.measures[0].value')
+UGB=$(virtuoso sim measure --analysis ac --expr 'cross(dB20(VF("/OUT")) 0 1 "falling")' --format json | jq -r '.measures[0].value')
+PM=$(virtuoso sim measure --analysis ac --expr 'value(phase(VF("/OUT")) cross(dB20(VF("/OUT")) 0 1 "falling")) + 180' --format json | jq -r '.measures[0].value')
+echo "Gain=${DC_GAIN}dB  GBW=${UGB}Hz  PM=${PM}°"
+
+# === Transient: slew rate, settling ===
+virtuoso sim run --analysis tran --stop 20u
+virtuoso sim measure --analysis tran \
+  --expr 'slewRate(VT("/OUT") 10 90 "rising")' \
+  --expr 'slewRate(VT("/OUT") 90 10 "falling")'
+```

@@ -50,8 +50,10 @@ unless(boundp('RBSessionId)   RBSessionId   = "")
 unless(boundp('RBSessionSeq)  RBSessionSeq  = 0)
 
 procedure(RBIpcDataHandler(ipcId data)
-  ; Handler for successful data received from the Python daemon
-  ; This function is called when the daemon sends back Virtuoso's response
+  ; Handler for successful data received from the daemon.
+  ; evalstring() bypasses CIW's interactive loop — printf output is line-buffered
+  ; and won't appear until a "\n" is received or hiFlush() is called explicitly.
+  ; We call hiFlush() after every evalstring to force CIW UI refresh.
   let((result)
     when(RBEcho printf("[RAMIC Bridge (%L)] receive:%L\n" ipcId data))
     if(errset(result=evalstring(data)) then
@@ -59,9 +61,10 @@ procedure(RBIpcDataHandler(ipcId data)
 	    ipcWriteProcess(ipcId sprintf(nil "%c%L%c" intToChar(2) result intToChar(30)))
 		when(RBEcho printf("[RAMIC Bridge (%L)] return:%L\n" ipcId result))
 	else
-        ; Error: NAK + payload to Python only (no CIW printf; client parses errors)
+        ; Error: NAK + payload to daemon only (no CIW printf; client parses errors)
         ipcWriteProcess(ipcId sprintf(nil "%c%L%c" intToChar(21) errset.errset intToChar(30)))
     )
+    hiFlush()  ; force CIW UI refresh — evalstring is line-buffered unlike interactive CIW
   )
 )
 

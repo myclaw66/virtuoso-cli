@@ -10,6 +10,8 @@ mod ocean;
 mod output;
 mod spectre;
 mod transport;
+#[cfg(test)]
+mod tests;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use output::{OutputFormat, print_json};

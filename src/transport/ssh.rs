@@ -250,7 +250,7 @@ impl SSHRunner {
         }
     }
 
-    fn build_ssh_cmd(&self) -> Command {
+    pub(crate) fn build_ssh_cmd(&self) -> Command {
         let mut cmd = Command::new("ssh");
         cmd.args([
             "-o",
@@ -286,7 +286,7 @@ impl SSHRunner {
         }
     }
 
-    fn summarize_error(&self, stderr: &str) -> String {
+    pub(crate) fn summarize_error(&self, stderr: &str) -> String {
         let lower = stderr.to_lowercase();
         if lower.contains("connection refused") {
             "connection refused - check if SSH is running".into()

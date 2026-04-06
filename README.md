@@ -15,6 +15,9 @@
 
 Control Cadence Virtuoso from anywhere — locally or remotely. Designed for AI Agents and humans alike.
 
+> **Based on** [virtuoso-bridge-lite](https://github.com/Arcadia-1/virtuoso-bridge-lite) by Arcadia-1.
+> `vcli` is a full Rust rewrite and major extension of that project, adding multi-session support, dynamic port assignment, session registry, an agent-native CLI, and Spectre simulation integration.
+
 ### Overview
 
 `vcli` is a lightweight Rust-based bridge tool for executing SKILL code outside of Virtuoso. It starts a Rust daemon inside Virtuoso via `ramic_bridge.il`, which accepts commands over TCP, calls `evalstring`, and returns results.
@@ -171,6 +174,9 @@ vcli skill exec    # connects to port N
 ## 中文
 
 从任何地方控制 Cadence Virtuoso，本地或远程均可。为 AI Agent 和人类共同设计。
+
+> **基于** [virtuoso-bridge-lite](https://github.com/Arcadia-1/virtuoso-bridge-lite)（作者 Arcadia-1）重构。
+> `vcli` 是对该项目的完整 Rust 重写与大幅扩展，新增了多 session 支持、动态端口分配、session 注册表、Agent 原生 CLI 以及 Spectre 仿真集成。
 
 ### 简介
 

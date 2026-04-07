@@ -4,6 +4,7 @@ type: maxim
 title: SKILL nil return is not a transport error
 status: active
 created: 2026-04-07
+updated: 2026-04-07
 tags: [maxim, skill, error-handling]
 ---
 

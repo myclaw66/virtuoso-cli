@@ -1,7 +1,6 @@
 use crate::client::bridge::VirtuosoClient;
 use crate::error::{Result, VirtuosoError};
 use serde_json::{json, Value};
-use std::collections::HashMap;
 
 pub fn char(
     lib: &str,
@@ -18,7 +17,6 @@ pub fn char(
 ) -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
 
-    // Setup simulator
     client.execute_skill("simulator('spectre)", None)?;
     let design_result = client.execute_skill(
         &format!("design(\"{lib}\" \"{cell}\" \"{view}\")"),
@@ -47,9 +45,8 @@ pub fn char(
             client.execute_skill("save('all)", None)?;
             client.execute_skill("run()", Some(timeout))?;
 
-            // Extract oppoint
             let params = ["gm", "ids", "gds", "vth", "cgs"];
-            let mut vals: HashMap<String, f64> = HashMap::new();
+            let mut opvals = OpVals::default();
             let mut ok = true;
 
             for p in &params {
@@ -60,37 +57,15 @@ pub fn char(
                     ok = false;
                     break;
                 }
-                if let Ok(f) = v.parse::<f64>() {
-                    vals.insert(p.to_string(), f);
-                } else {
-                    ok = false;
-                    break;
+                match v.parse::<f64>() {
+                    Ok(f) => opvals.set(p, f),
+                    Err(_) => { ok = false; break; }
                 }
             }
 
             if ok {
-                let gm = vals["gm"];
-                let id = vals["ids"].abs();
-                let gds = vals["gds"].abs();
-                let vth = vals["vth"];
-                let cgs = vals["cgs"];
-
-                if id > 1e-15 && gm > 1e-15 {
-                    let gmid = gm / id;
-                    let gain = gm / gds;
-                    let vov = vgs - vth;
-                    let ft = gm / (2.0 * std::f64::consts::PI * cgs.abs());
-
-                    points.push(json!({
-                        "vgs": (vgs * 100.0).round() / 100.0,
-                        "gmid": (gmid * 100.0).round() / 100.0,
-                        "gain": (gain * 10.0).round() / 10.0,
-                        "id": id,
-                        "vov": (vov * 1000.0).round() / 1000.0,
-                        "ft": ft,
-                        "vth": (vth * 10000.0).round() / 10000.0,
-                        "gds": gds,
-                    }));
+                if let Some(pt) = opvals.build_point(vgs, false) {
+                    points.push(pt);
                     total_points += 1;
                 }
             }
@@ -99,10 +74,7 @@ pub fn char(
         }
 
         if !points.is_empty() {
-            all_data.push(json!({
-                "l": l,
-                "points": points,
-            }));
+            all_data.push(json!({ "l": l, "points": points }));
         }
     }
 
@@ -134,7 +106,9 @@ pub fn char_netlist(
     vds: f64,
 ) -> Result<Value> {
     let is_pmos = device_type == "pmos";
-    let vsd = vds;
+    let spectre_cmd = crate::config::Config::from_env()
+        .map(|c| c.spectre_cmd)
+        .unwrap_or_else(|_| "spectre".into());
 
     let mut all_data: Vec<Value> = Vec::new();
     let mut total_points = 0;
@@ -147,12 +121,11 @@ pub fn char_netlist(
         let raw_dir = work_dir.join(format!("raw_{l:e}"));
         std::fs::create_dir_all(&raw_dir).map_err(VirtuosoError::Io)?;
 
-        // Build netlist
         let netlist = if is_pmos {
             format!(
                 r#"simulator lang=spectre
 include "{model_file}" section={model_section}
-parameters VDD={vdd} VSD={vsd} W=1u L={l:e} vgs_val={vgs_start}
+parameters VDD={vdd} VSD={vds} W=1u L={l:e} vgs_val={vgs_start}
 Vvdd (vdd 0) vsource dc=VDD
 Vsg  (vdd g) vsource dc=vgs_val
 Vsd  (vdd d) vsource dc=VSD
@@ -165,7 +138,7 @@ save {inst_name}:oppoint
             format!(
                 r#"simulator lang=spectre
 include "{model_file}" section={model_section}
-parameters VDS={vsd} W=1u L={l:e} vgs_val={vgs_start}
+parameters VDS={vds} W=1u L={l:e} vgs_val={vgs_start}
 Vvgs (g 0) vsource dc=vgs_val
 Vvds (d 0) vsource dc=VDS
 {inst_name} (d g 0 0) {device_model} w=W l=L
@@ -177,14 +150,13 @@ save {inst_name}:oppoint
 
         std::fs::write(&netlist_path, &netlist).map_err(VirtuosoError::Io)?;
 
-        // Run spectre
-        let raw_str = raw_dir.to_string_lossy().to_string();
-        let output_run = std::process::Command::new("spectre")
+        let raw_str = raw_dir.to_str().expect("raw_dir path is UTF-8");
+        let output_run = std::process::Command::new(&spectre_cmd)
             .args([
-                netlist_path.to_str().unwrap(),
+                netlist_path.to_str().expect("netlist path is UTF-8"),
                 "+aps",
                 "-format", "psfascii",
-                "-raw", &raw_str,
+                "-raw", raw_str,
             ])
             .output()
             .map_err(|e| VirtuosoError::Execution(format!("spectre failed: {e}")))?;
@@ -194,7 +166,6 @@ save {inst_name}:oppoint
             return Err(VirtuosoError::Execution(format!("spectre error at L={l:e}: {stderr}")));
         }
 
-        // Parse PSF ASCII results
         let psf_path = raw_dir.join("vgs_sweep.dc");
         let psf = std::fs::read_to_string(&psf_path).map_err(VirtuosoError::Io)?;
         let points = parse_psf_oppoint(&psf, inst_name, is_pmos)?;
@@ -238,38 +209,82 @@ fn write_lookup_json(output: &str, device_type: &str, data: Vec<Value>) -> Resul
     Ok(output_path)
 }
 
-/// Parse PSF ASCII oppoint file, extract one data point per VGS sweep step.
+/// Accumulated oppoint values from one PSF block or one SKILL query set.
+#[derive(Default)]
+struct OpVals {
+    gm:  Option<f64>,
+    ids: Option<f64>,
+    gds: Option<f64>,
+    vth: Option<f64>,
+    cgs: Option<f64>,
+}
+
+impl OpVals {
+    fn set(&mut self, key: &str, v: f64) {
+        match key {
+            "gm"  => self.gm  = Some(v),
+            "ids" => self.ids = Some(v),
+            "gds" => self.gds = Some(v),
+            "vth" => self.vth = Some(v),
+            "cgs" => self.cgs = Some(v),
+            _ => {}
+        }
+    }
+
+    fn build_point(&self, vgs: f64, is_pmos: bool) -> Option<Value> {
+        let gm  = self.gm?;
+        let id  = self.ids?.abs();
+        let gds = self.gds?.abs();
+        let vth = self.vth?;
+        let cgs = self.cgs?.abs();
+
+        if id < 1e-15 || gm < 1e-15 { return None; }
+
+        let gmid = gm / id;
+        let gain = gm / gds;
+        // vgs represents VSG for PMOS — overdrive is VSG - |Vtp|
+        let vov = if is_pmos { vgs - vth.abs() } else { vgs - vth };
+        let ft = gm / (2.0 * std::f64::consts::PI * cgs);
+
+        Some(json!({
+            "vgs":  (vgs * 1000.0).round() / 1000.0,
+            "gmid": (gmid * 100.0).round() / 100.0,
+            "gain": (gain * 10.0).round() / 10.0,
+            "id":   id,
+            "vov":  (vov * 1000.0).round() / 1000.0,
+            "ft":   ft,
+            "vth":  (vth * 10000.0).round() / 10000.0,
+            "gds":  gds,
+        }))
+    }
+}
+
 fn parse_psf_oppoint(psf: &str, inst: &str, is_pmos: bool) -> Result<Vec<Value>> {
-    let gm_key   = format!("\"{}:gm\"", inst);
-    let ids_key  = format!("\"{}:ids\"", inst);
-    let gds_key  = format!("\"{}:gds\"", inst);
-    let vth_key  = format!("\"{}:vth\"", inst);
-    let cgs_key  = format!("\"{}:cgs\"", inst);
+    let gm_key  = format!("\"{}:gm\"",  inst);
+    let ids_key = format!("\"{}:ids\"", inst);
+    let gds_key = format!("\"{}:gds\"", inst);
+    let vth_key = format!("\"{}:vth\"", inst);
+    let cgs_key = format!("\"{}:cgs\"", inst);
 
     let mut points: Vec<Value> = Vec::new();
-
-    // Split into per-sweep-point blocks at "vgs_val" value lines
     let mut current_vgs: Option<f64> = None;
-    let mut vals: HashMap<String, f64> = HashMap::new();
+    let mut vals = OpVals::default();
 
     for line in psf.lines() {
         let line = line.trim();
 
-        // Sweep parameter value line: "vgs_val" 3.00e-01
         if line.starts_with("\"vgs_val\"") && !line.contains("sweep") {
-            // Flush previous block
             if let Some(vgs) = current_vgs {
-                if let Some(pt) = build_point(vgs, &vals, is_pmos) {
+                if let Some(pt) = vals.build_point(vgs, is_pmos) {
                     points.push(pt);
                 }
-                vals.clear();
+                vals = OpVals::default();
             }
             let v: f64 = line.split_whitespace().nth(1).and_then(|s| s.parse().ok()).unwrap_or(0.0);
             current_vgs = Some(v);
             continue;
         }
 
-        // Parse value lines: "KEY" value
         let parse_val = |key: &str| -> Option<f64> {
             if line.starts_with(key) {
                 line.split_whitespace().nth(1).and_then(|s| s.parse().ok())
@@ -278,46 +293,18 @@ fn parse_psf_oppoint(psf: &str, inst: &str, is_pmos: bool) -> Result<Vec<Value>>
             }
         };
 
-        if let Some(v) = parse_val(&gm_key)  { vals.insert("gm".into(), v); }
-        if let Some(v) = parse_val(&ids_key) { vals.insert("ids".into(), v); }
-        if let Some(v) = parse_val(&gds_key) { vals.insert("gds".into(), v); }
-        if let Some(v) = parse_val(&vth_key) { vals.insert("vth".into(), v); }
-        if let Some(v) = parse_val(&cgs_key) { vals.insert("cgs".into(), v); }
+        if let Some(v) = parse_val(&gm_key)       { vals.gm  = Some(v); }
+        else if let Some(v) = parse_val(&ids_key)  { vals.ids = Some(v); }
+        else if let Some(v) = parse_val(&gds_key)  { vals.gds = Some(v); }
+        else if let Some(v) = parse_val(&vth_key)  { vals.vth = Some(v); }
+        else if let Some(v) = parse_val(&cgs_key)  { vals.cgs = Some(v); }
     }
 
-    // Flush last block
     if let Some(vgs) = current_vgs {
-        if let Some(pt) = build_point(vgs, &vals, is_pmos) {
+        if let Some(pt) = vals.build_point(vgs, is_pmos) {
             points.push(pt);
         }
     }
 
     Ok(points)
-}
-
-fn build_point(vgs: f64, vals: &HashMap<String, f64>, is_pmos: bool) -> Option<Value> {
-    let gm  = *vals.get("gm")?;
-    let id  = vals.get("ids")?.abs();
-    let gds = vals.get("gds")?.abs();
-    let vth = *vals.get("vth")?;
-    let cgs = vals.get("cgs")?.abs();
-
-    if id < 1e-15 || gm < 1e-15 { return None; }
-
-    let gmid = gm / id;
-    let gain = gm / gds;
-    // For PMOS: vov = VSG - |Vtp| = vgs - |vth|; for NMOS: vov = VGS - Vtn = vgs - vth
-    let vov = if is_pmos { vgs - vth.abs() } else { vgs - vth };
-    let ft = gm / (2.0 * std::f64::consts::PI * cgs);
-
-    Some(json!({
-        "vgs":  (vgs * 1000.0).round() / 1000.0,
-        "gmid": (gmid * 100.0).round() / 100.0,
-        "gain": (gain * 10.0).round() / 10.0,
-        "id":   id,
-        "vov":  (vov * 1000.0).round() / 1000.0,
-        "ft":   ft,
-        "vth":  (vth * 10000.0).round() / 10000.0,
-        "gds":  gds,
-    }))
 }

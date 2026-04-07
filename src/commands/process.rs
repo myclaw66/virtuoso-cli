@@ -24,7 +24,7 @@ pub fn char(
         &format!("design(\"{lib}\" \"{cell}\" \"{view}\")"),
         None,
     )?;
-    if !design_result.ok() || design_result.output.trim() == "nil" {
+    if !design_result.skill_ok() {
         return Err(VirtuosoError::NotFound(format!(
             "design {lib}/{cell}/{view} not found"
         )));

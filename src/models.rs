@@ -20,8 +20,18 @@ pub struct VirtuosoResult {
 }
 
 impl VirtuosoResult {
+    /// Transport-level success: bridge returned STX (not NAK/timeout).
+    /// Does NOT mean the SKILL call succeeded — SKILL functions return "nil"
+    /// on failure via STX. Use skill_ok() to check SKILL-level success.
     pub fn ok(&self) -> bool {
         self.status == ExecutionStatus::Success
+    }
+
+    /// True when the bridge succeeded AND SKILL returned a non-nil value.
+    /// Use this whenever a SKILL function signals failure by returning nil
+    /// (e.g. design(), dbOpenCellViewByType(), getData()).
+    pub fn skill_ok(&self) -> bool {
+        self.status == ExecutionStatus::Success && self.output.trim() != "nil"
     }
 
     pub fn success(output: impl Into<String>) -> Self {

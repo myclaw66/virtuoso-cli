@@ -2,6 +2,7 @@ use crate::client::bridge::VirtuosoClient;
 use crate::error::{Result, VirtuosoError};
 use serde_json::{json, Value};
 
+#[allow(clippy::too_many_arguments)]
 pub fn char(
     lib: &str,
     cell: &str,
@@ -92,6 +93,7 @@ pub fn char(
 
 /// Characterize via direct Spectre netlist — no Virtuoso session required.
 /// Generates a netlist for each L, runs spectre, parses PSF ASCII oppoint results.
+#[allow(clippy::too_many_arguments)]
 pub fn char_netlist(
     device_type: &str,
     l_values: &[f64],

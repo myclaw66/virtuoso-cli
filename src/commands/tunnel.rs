@@ -24,10 +24,7 @@ pub fn start(timeout: Option<u64>, dry_run: bool) -> Result<Value> {
     client.warm(timeout)?;
 
     let vc = crate::client::bridge::VirtuosoClient::from_env()?;
-    let daemon_ok = match vc.test_connection(Some(cfg.timeout)) {
-        Ok(true) => true,
-        _ => false,
-    };
+    let daemon_ok = matches!(vc.test_connection(Some(cfg.timeout)), Ok(true));
 
     Ok(json!({
         "status": "started",

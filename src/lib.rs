@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 pub mod client;
 pub mod commands;
 pub mod config;

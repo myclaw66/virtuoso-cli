@@ -68,12 +68,11 @@ impl SpectreSimulator {
 
     pub fn check_license(&self) -> Result<String> {
         if let Some(ref runner) = self.ssh_runner {
-            let mut cmds = Vec::new();
-            cmds.push("which spectre 2>/dev/null || echo 'not found'");
-            cmds.push("spectre -W 2>/dev/null | head -1 || echo 'unknown'");
-            cmds.push(
+            let cmds = vec![
+                "which spectre 2>/dev/null || echo 'not found'",
+                "spectre -W 2>/dev/null | head -1 || echo 'unknown'",
                 "lmstat -a 2>/dev/null | grep -i spectre | head -5 || echo 'lmstat not available'",
-            );
+            ];
 
             let mut results = Vec::new();
             for cmd in cmds {

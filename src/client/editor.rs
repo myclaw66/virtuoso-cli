@@ -104,6 +104,18 @@ impl<'a> SchematicEditor<'a> {
             .push(ops.create_pin(net_name, pin_type, origin));
     }
 
+    pub fn set_param(&mut self, inst_name: &str, param: &str, value: &str) {
+        let ops = SchematicOps::default();
+        self.commands
+            .push(ops.set_instance_param(inst_name, param, value));
+    }
+
+    pub fn assign_net(&mut self, inst_name: &str, term_name: &str, net_name: &str) {
+        let ops = SchematicOps::default();
+        self.commands
+            .push(ops.assign_net(inst_name, term_name, net_name));
+    }
+
     pub fn execute(self) -> Result<VirtuosoResult> {
         self.client.execute_operations(&self.commands)
     }

@@ -3,6 +3,7 @@ pub mod design;
 pub mod init;
 pub mod process;
 pub mod schema;
+pub mod schematic;
 pub mod session;
 pub mod sim;
 pub mod skill;

@@ -2,6 +2,10 @@
 
 供 Claude Code 使用的项目开发指引。用户文档见 [README.md](README.md)。
 
+## 语言偏好
+
+除集成电路专业术语（如 gm/Id、OTA、GBW、phase margin、oprobe 等）保留英文外，所有回答一律使用**中文**。
+
 ## 角色定位
 
 你是**模拟芯片自动化设计专家**，在本项目中扮演以下角色：

@@ -101,6 +101,10 @@ enum Commands {
     #[command(subcommand)]
     Design(DesignCmd),
 
+    /// Create and edit schematics in Virtuoso
+    #[command(subcommand)]
+    Schematic(SchematicCmd),
+
     /// List and inspect active Virtuoso bridge sessions
     #[command(subcommand)]
     Session(SessionCmd),
@@ -533,6 +537,98 @@ enum DesignCmd {
 }
 
 #[derive(Subcommand)]
+enum SchematicCmd {
+    /// Open or create a schematic cellview for editing
+    Open {
+        #[arg(long)]
+        lib: String,
+        #[arg(long)]
+        cell: String,
+        #[arg(long, default_value = "schematic")]
+        view: String,
+    },
+
+    /// Place an instance in the schematic
+    Place {
+        /// Master cell in lib/cell format (e.g. smic13mmrf/p12)
+        #[arg(long)]
+        master: String,
+        /// Instance name
+        #[arg(long)]
+        name: String,
+        /// X coordinate
+        #[arg(long, default_value = "0")]
+        x: i64,
+        /// Y coordinate
+        #[arg(long, default_value = "0")]
+        y: i64,
+        /// Orientation (R0, R90, R180, R270, MY, MX)
+        #[arg(long, default_value = "R0")]
+        orient: String,
+        /// Instance parameters as key=value pairs (e.g. w=14u,l=1u)
+        #[arg(long)]
+        params: Option<String>,
+    },
+
+    /// Create a wire between coordinates
+    Wire {
+        #[arg(long)]
+        net: String,
+        /// Points as x1,y1 x2,y2 ...
+        #[arg(required = true)]
+        points: Vec<String>,
+    },
+
+    /// Connect two instance terminals with a named net
+    Conn {
+        #[arg(long)]
+        net: String,
+        /// Source terminal (inst:term)
+        #[arg(long)]
+        from: String,
+        /// Destination terminal (inst:term)
+        #[arg(long)]
+        to: String,
+    },
+
+    /// Add a net label
+    Label {
+        #[arg(long)]
+        net: String,
+        #[arg(long, default_value = "0")]
+        x: i64,
+        #[arg(long, default_value = "0")]
+        y: i64,
+    },
+
+    /// Add a pin
+    Pin {
+        #[arg(long)]
+        net: String,
+        /// Pin direction: input, output, inputOutput
+        #[arg(long)]
+        dir: String,
+        #[arg(long, default_value = "0")]
+        x: i64,
+        #[arg(long, default_value = "0")]
+        y: i64,
+    },
+
+    /// Run schematic check (schCheck)
+    Check,
+
+    /// Save current schematic
+    Save,
+
+    /// Build schematic from JSON spec file
+    Build {
+        /// Path to JSON spec file
+        #[arg(long)]
+        spec: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum SessionCmd {
     /// List all active Virtuoso bridge sessions
     #[command(
@@ -690,6 +786,38 @@ fn main() {
             DesignCmd::Explore { pdk, r#type } => {
                 commands::design::explore(&pdk, &r#type, format)
             }
+        },
+        Commands::Schematic(cmd) => match cmd {
+            SchematicCmd::Open { lib, cell, view } => {
+                commands::schematic::open(&lib, &cell, &view)
+            }
+            SchematicCmd::Place { master, name, x, y, orient, params } => {
+                let param_pairs: Vec<(String, String)> = params
+                    .unwrap_or_default()
+                    .split(',')
+                    .filter(|s| !s.is_empty())
+                    .filter_map(|s| {
+                        let (k, v) = s.split_once('=')?;
+                        Some((k.to_string(), v.to_string()))
+                    })
+                    .collect();
+                commands::schematic::place(&master, &name, x, y, &orient, &param_pairs)
+            }
+            SchematicCmd::Wire { net, points } => {
+                commands::schematic::wire_from_strings(&net, &points)
+            }
+            SchematicCmd::Conn { net, from, to } => {
+                commands::schematic::conn(&net, &from, &to)
+            }
+            SchematicCmd::Label { net, x, y } => {
+                commands::schematic::label(&net, x, y)
+            }
+            SchematicCmd::Pin { net, dir, x, y } => {
+                commands::schematic::pin(&net, &dir, x, y)
+            }
+            SchematicCmd::Check => commands::schematic::check(),
+            SchematicCmd::Save => commands::schematic::save(),
+            SchematicCmd::Build { spec } => commands::schematic::build(&spec),
         },
         Commands::Session(cmd) => match cmd {
             SessionCmd::List => commands::session::list(format),

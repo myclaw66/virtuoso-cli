@@ -336,7 +336,7 @@ pub fn build(spec_path: &str) -> Result<Value> {
 // ── Read commands ───────────────────────────────────────────────────
 
 /// Parse SKILL JSON output: bridge returns `"\"[...]\""`  — strip outer quotes, unescape inner.
-fn parse_skill_json(output: &str) -> Value {
+pub fn parse_skill_json(output: &str) -> Value {
     // output is like: "\"[{\\\"name\\\":\\\"M1\\\"}]\""
     // Step 1: strip outer quotes from SKILL string
     let s = output.trim_matches('"');

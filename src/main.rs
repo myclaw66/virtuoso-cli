@@ -104,6 +104,10 @@ enum Commands {
     #[command(subcommand)]
     Design(DesignCmd),
 
+    /// Manage Maestro simulation sessions (ADE)
+    #[command(subcommand)]
+    Maestro(MaestroCmd),
+
     /// Create and edit schematics in Virtuoso
     #[command(subcommand)]
     Schematic(SchematicCmd),
@@ -555,6 +559,76 @@ enum DesignCmd {
 }
 
 #[derive(Subcommand)]
+enum MaestroCmd {
+    /// Open a Maestro session (background mode)
+    Open {
+        #[arg(long)]
+        lib: String,
+        #[arg(long)]
+        cell: String,
+        #[arg(long, default_value = "maestro")]
+        view: String,
+    },
+
+    /// Close a Maestro session
+    Close {
+        /// Session ID (e.g. fnxSession4)
+        #[arg(long)]
+        session: String,
+    },
+
+    /// List all active Maestro sessions
+    ListSessions,
+
+    /// Set a design variable
+    SetVar {
+        #[arg(long)]
+        session: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        value: String,
+    },
+
+    /// Get enabled analyses
+    GetAnalyses {
+        #[arg(long)]
+        session: String,
+    },
+
+    /// Add an output expression
+    AddOutput {
+        #[arg(long)]
+        session: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        expr: String,
+    },
+
+    /// Run simulation (async, returns immediately)
+    Run {
+        #[arg(long)]
+        session: String,
+    },
+
+    /// Save Maestro setup to disk
+    Save {
+        #[arg(long)]
+        session: String,
+    },
+
+    /// Export results to CSV
+    Export {
+        #[arg(long)]
+        session: String,
+        /// Output CSV file path
+        #[arg(long)]
+        path: String,
+    },
+}
+
+#[derive(Subcommand)]
 enum SchematicCmd {
     /// Open or create a schematic cellview for editing
     Open {
@@ -880,6 +954,25 @@ fn main() {
                 r#type,
             } => commands::design::size(gmid, l, gm, id, &pdk, &r#type, format),
             DesignCmd::Explore { pdk, r#type } => commands::design::explore(&pdk, &r#type, format),
+        },
+        Commands::Maestro(cmd) => match cmd {
+            MaestroCmd::Open { lib, cell, view } => commands::maestro::open(&lib, &cell, &view),
+            MaestroCmd::Close { session } => commands::maestro::close(&session),
+            MaestroCmd::ListSessions => commands::maestro::list_sessions(),
+            MaestroCmd::SetVar {
+                session,
+                name,
+                value,
+            } => commands::maestro::set_var(&session, &name, &value),
+            MaestroCmd::GetAnalyses { session } => commands::maestro::get_analyses(&session),
+            MaestroCmd::AddOutput {
+                session,
+                name,
+                expr,
+            } => commands::maestro::add_output(&session, &name, &expr),
+            MaestroCmd::Run { session } => commands::maestro::run(&session),
+            MaestroCmd::Save { session } => commands::maestro::save(&session),
+            MaestroCmd::Export { session, path } => commands::maestro::export(&session, &path),
         },
         Commands::Schematic(cmd) => match cmd {
             SchematicCmd::Open { lib, cell, view } => commands::schematic::open(&lib, &cell, &view),

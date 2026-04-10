@@ -1,4 +1,5 @@
 use crate::client::layout_ops::LayoutOps;
+use crate::client::maestro_ops::MaestroOps;
 use crate::client::schematic_ops::SchematicOps;
 use crate::error::{Result, VirtuosoError};
 use crate::models::{ExecutionStatus, VirtuosoResult};
@@ -17,6 +18,7 @@ pub struct VirtuosoClient {
     timeout: u64,
     tunnel: Option<SSHClient>,
     pub layout: LayoutOps,
+    pub maestro: MaestroOps,
     pub schematic: SchematicOps,
 }
 
@@ -28,6 +30,7 @@ impl VirtuosoClient {
             timeout,
             tunnel: None,
             layout: LayoutOps::new(),
+            maestro: MaestroOps,
             schematic: SchematicOps::new(),
         }
     }
@@ -95,6 +98,7 @@ impl VirtuosoClient {
             timeout: cfg.timeout,
             tunnel,
             layout: LayoutOps::new(),
+            maestro: MaestroOps,
             schematic: SchematicOps::new(),
         })
     }

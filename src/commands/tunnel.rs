@@ -119,6 +119,71 @@ pub fn restart(timeout: Option<u64>) -> Result<Value> {
     }))
 }
 
+pub fn diagnose() -> Result<Value> {
+    let cfg = Config::from_env()?;
+    let port = TunnelState::load()?.map(|s| s.port).unwrap_or(cfg.port);
+
+    // TCP reachability
+    let tcp_ok = std::net::TcpStream::connect_timeout(
+        &format!("127.0.0.1:{port}").parse().unwrap(),
+        std::time::Duration::from_secs(2),
+    )
+    .is_ok();
+
+    // Daemon responsiveness + latency
+    let (daemon_ok, latency_ms, virtuoso_version) = if tcp_ok {
+        let vc = crate::client::bridge::VirtuosoClient::local("127.0.0.1", port, cfg.timeout);
+        let start = std::time::Instant::now();
+        match vc.test_connection(Some(5)) {
+            Ok(true) => {
+                let lat = start.elapsed().as_millis();
+                // Try to get Virtuoso version
+                let ver = vc.execute_skill("getVersion()", None).ok().and_then(|r| {
+                    if r.skill_ok() {
+                        Some(r.output.trim_matches('"').to_string())
+                    } else {
+                        None
+                    }
+                });
+                (true, Some(lat as u64), ver)
+            }
+            _ => (false, None, None),
+        }
+    } else {
+        (false, None, None)
+    };
+
+    // SKILL eval test
+    let skill_ok = if daemon_ok {
+        let vc = crate::client::bridge::VirtuosoClient::local("127.0.0.1", port, cfg.timeout);
+        vc.execute_skill("1+1", None)
+            .map(|r| r.output.trim() == "2")
+            .unwrap_or(false)
+    } else {
+        false
+    };
+
+    let summary = if skill_ok {
+        "fully operational"
+    } else if daemon_ok {
+        "daemon responds but SKILL eval failed"
+    } else if tcp_ok {
+        "TCP reachable but daemon not responding"
+    } else {
+        "not reachable"
+    };
+
+    Ok(json!({
+        "port": port,
+        "tcp_reachable": tcp_ok,
+        "daemon_responsive": daemon_ok,
+        "skill_eval_ok": skill_ok,
+        "latency_ms": latency_ms,
+        "virtuoso_version": virtuoso_version,
+        "summary": summary,
+    }))
+}
+
 pub fn status(format: OutputFormat) -> Result<Value> {
     let cfg = Config::from_env()?;
 

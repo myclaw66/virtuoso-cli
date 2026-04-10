@@ -183,6 +183,9 @@ enum TunnelCmd {
             virtuoso tunnel status --format json"
     )]
     Status,
+
+    /// Run full connection diagnostics
+    Diagnose,
 }
 
 #[derive(Subcommand)]
@@ -725,6 +728,7 @@ fn main() {
             TunnelCmd::Stop { force, dry_run } => commands::tunnel::stop(force, dry_run),
             TunnelCmd::Restart { timeout } => commands::tunnel::restart(Some(timeout)),
             TunnelCmd::Status => commands::tunnel::status(format),
+            TunnelCmd::Diagnose => commands::tunnel::diagnose(),
         },
         Commands::Skill(cmd) => match cmd {
             SkillCmd::Exec { code, timeout } => commands::skill::exec(&code, timeout),

@@ -98,6 +98,31 @@ impl SchematicOps {
         )
     }
 
+    // ── Read operations ──────────────────────────────────────────────
+
+    /// List all instances in the open cellview. Returns JSON array via sprintf.
+    pub fn list_instances(&self) -> String {
+        r#"let((cv out sep lib cell) cv = RB_SCH_CV out = "[" sep = "" foreach(inst cv~>instances lib = if(inst~>master inst~>master~>libName "?") cell = if(inst~>master inst~>master~>cellName "?") out = strcat(out sep sprintf(nil "{\"name\":\"%s\",\"master\":\"%s/%s\",\"x\":%g,\"y\":%g}" inst~>name lib cell car(inst~>xy) cadr(inst~>xy))) sep = ",") strcat(out "]"))"#.into()
+    }
+
+    /// List all nets in the open cellview. Returns JSON array.
+    pub fn list_nets(&self) -> String {
+        r#"let((cv out sep) cv = RB_SCH_CV out = "[" sep = "" foreach(net cv~>nets out = strcat(out sep sprintf(nil "\"%s\"" net~>name)) sep = ",") strcat(out "]"))"#.into()
+    }
+
+    /// List all pins (terminals) in the open cellview. Returns JSON array.
+    pub fn list_pins(&self) -> String {
+        r#"let((cv out sep) cv = RB_SCH_CV out = "[" sep = "" foreach(term cv~>terminals out = strcat(out sep sprintf(nil "{\"name\":\"%s\",\"direction\":\"%s\"}" term~>name term~>direction)) sep = ",") strcat(out "]"))"#.into()
+    }
+
+    /// Get parameters of a specific instance. Returns JSON object.
+    pub fn get_instance_params(&self, inst_name: &str) -> String {
+        let inst_name = escape_skill_string(inst_name);
+        format!(
+            r#"let((cv inst out sep v) cv = RB_SCH_CV inst = car(setof(i cv~>instances strcmp(i~>name "{inst_name}")==0)) if(inst then out = "{{" sep = "" foreach(prop inst~>prop when(prop~>name != nil v = prop~>value when(v out = strcat(out sep sprintf(nil "\"%s\":\"%s\"" prop~>name if(stringp(v) v sprintf(nil "%L" v)))) sep = ","))) strcat(out "}}") else "null"))"#
+        )
+    }
+
     /// Assign net name to instance terminal.
     /// Creates a named net and connects it to the instTerm via let-scoped locals.
     pub fn assign_net(&self, inst_name: &str, term_name: &str, net_name: &str) -> String {

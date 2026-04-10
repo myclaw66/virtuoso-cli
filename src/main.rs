@@ -618,6 +618,22 @@ enum SchematicCmd {
         #[arg(long)]
         spec: String,
     },
+
+    /// List all instances in the open cellview
+    ListInstances,
+
+    /// List all nets in the open cellview
+    ListNets,
+
+    /// List all pins (terminals) in the open cellview
+    ListPins,
+
+    /// Get parameters of a specific instance
+    GetParams {
+        /// Instance name (e.g. M1)
+        #[arg(long)]
+        inst: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -864,6 +880,10 @@ fn main() {
             SchematicCmd::Check => commands::schematic::check(),
             SchematicCmd::Save => commands::schematic::save(),
             SchematicCmd::Build { spec } => commands::schematic::build(&spec),
+            SchematicCmd::ListInstances => commands::schematic::list_instances(),
+            SchematicCmd::ListNets => commands::schematic::list_nets(),
+            SchematicCmd::ListPins => commands::schematic::list_pins(),
+            SchematicCmd::GetParams { inst } => commands::schematic::get_params(&inst),
         },
         Commands::Session(cmd) => match cmd {
             SessionCmd::List => commands::session::list(format),

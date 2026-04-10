@@ -332,3 +332,71 @@ pub fn build(spec_path: &str) -> Result<Value> {
         "check": r.output,
     }))
 }
+
+// ── Read commands ───────────────────────────────────────────────────
+
+/// Parse SKILL JSON output: bridge returns `"\"[...]\""`  — strip outer quotes, unescape inner.
+fn parse_skill_json(output: &str) -> Value {
+    // output is like: "\"[{\\\"name\\\":\\\"M1\\\"}]\""
+    // Step 1: strip outer quotes from SKILL string
+    let s = output.trim_matches('"');
+    // Step 2: try parsing directly (works if no extra escaping)
+    if let Ok(v) = serde_json::from_str(s) {
+        return v;
+    }
+    // Step 3: unescape \" → " and \\\\ → \ then retry
+    let unescaped = s.replace("\\\"", "\"").replace("\\\\", "\\");
+    serde_json::from_str(&unescaped).unwrap_or_else(|_| json!({"raw": output}))
+}
+
+pub fn list_instances() -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.schematic.list_instances();
+    let r = client.execute_skill(&skill, None)?;
+    if !r.skill_ok() {
+        return Err(VirtuosoError::Execution(format!(
+            "Failed to list instances: {}",
+            r.output
+        )));
+    }
+    Ok(parse_skill_json(&r.output))
+}
+
+pub fn list_nets() -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.schematic.list_nets();
+    let r = client.execute_skill(&skill, None)?;
+    if !r.skill_ok() {
+        return Err(VirtuosoError::Execution(format!(
+            "Failed to list nets: {}",
+            r.output
+        )));
+    }
+    Ok(parse_skill_json(&r.output))
+}
+
+pub fn list_pins() -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.schematic.list_pins();
+    let r = client.execute_skill(&skill, None)?;
+    if !r.skill_ok() {
+        return Err(VirtuosoError::Execution(format!(
+            "Failed to list pins: {}",
+            r.output
+        )));
+    }
+    Ok(parse_skill_json(&r.output))
+}
+
+pub fn get_params(inst: &str) -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.schematic.get_instance_params(inst);
+    let r = client.execute_skill(&skill, None)?;
+    if !r.skill_ok() {
+        return Err(VirtuosoError::Execution(format!(
+            "Failed to get params for '{}': {}",
+            inst, r.output
+        )));
+    }
+    Ok(json!({"instance": inst, "params": parse_skill_json(&r.output)}))
+}

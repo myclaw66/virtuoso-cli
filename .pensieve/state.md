@@ -1,8 +1,8 @@
 # Pensieve Project State
 
 ## Lifecycle State
-- Last Event: doctor
-- Last Note: doctor summary: status=PASS, must_fix=0, should_fix=0, info=0, next=none
+- Last Event: self-improve
+- Last Note: maxim: ci-must-match-target-toolchain; knowledge: rust-bin-vs-lib-crate-attrs
 
 ## Project Paths
 - Project Root: `/home/meow/git/virtuoso-cli`

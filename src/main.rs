@@ -3,6 +3,7 @@
 use tracing_subscriber::EnvFilter;
 
 mod client;
+mod command_log;
 mod commands;
 mod config;
 mod error;

@@ -189,6 +189,14 @@ impl VirtuosoClient {
             result.warnings.push("non-standard response marker".into());
         }
 
+        // Log command execution
+        let truncated = if skill_code.len() > 200 {
+            format!("{}...", &skill_code[..200])
+        } else {
+            skill_code.to_string()
+        };
+        crate::command_log::log_command("SKILL", &truncated, Some(start.elapsed().as_millis()));
+
         Ok(result)
     }
 

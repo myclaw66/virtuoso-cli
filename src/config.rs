@@ -17,19 +17,35 @@ pub struct Config {
 }
 
 impl Config {
+    /// Read a config variable, checking profile-specific first (e.g. VB_REMOTE_HOST_prod).
+    fn env_with_profile(key: &str, profile: Option<&str>) -> Option<String> {
+        if let Some(p) = profile {
+            if let Ok(v) = env::var(format!("{key}_{p}")) {
+                if !v.is_empty() {
+                    return Some(v);
+                }
+            }
+        }
+        env::var(key).ok().filter(|s| !s.is_empty())
+    }
+
     pub fn from_env() -> Result<Self> {
+        let profile = env::var("VB_PROFILE").ok();
+        Self::from_env_with_profile(profile.as_deref())
+    }
+
+    pub fn from_env_with_profile(profile: Option<&str>) -> Result<Self> {
         if let Err(e) = dotenv() {
             if !e.not_found() {
                 tracing::warn!("failed to load .env: {e}");
             }
         }
 
-        let remote_host = env::var("VB_REMOTE_HOST").ok().filter(|s| !s.is_empty());
+        let remote_host = Self::env_with_profile("VB_REMOTE_HOST", profile);
 
-        let port: u16 = env::var("VB_PORT")
-            .ok()
+        let port: u16 = Self::env_with_profile("VB_PORT", profile)
             .and_then(|v| v.parse().ok())
-            .unwrap_or(65432);
+            .unwrap_or_else(|| Self::default_port());
 
         if port == 0 {
             return Err(VirtuosoError::Config(
@@ -39,26 +55,32 @@ impl Config {
 
         Ok(Self {
             remote_host,
-            remote_user: env::var("VB_REMOTE_USER").ok(),
+            remote_user: Self::env_with_profile("VB_REMOTE_USER", profile),
             port,
-            jump_host: env::var("VB_JUMP_HOST").ok(),
-            jump_user: env::var("VB_JUMP_USER").ok(),
-            timeout: env::var("VB_TIMEOUT")
-                .ok()
+            jump_host: Self::env_with_profile("VB_JUMP_HOST", profile),
+            jump_user: Self::env_with_profile("VB_JUMP_USER", profile),
+            timeout: Self::env_with_profile("VB_TIMEOUT", profile)
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(30),
-            keep_remote_files: env::var("VB_KEEP_REMOTE_FILES")
-                .ok()
+            keep_remote_files: Self::env_with_profile("VB_KEEP_REMOTE_FILES", profile)
                 .map(|v| v == "1" || v.to_lowercase() == "true")
                 .unwrap_or(false),
-            spectre_cmd: env::var("VB_SPECTRE_CMD")
-                .ok()
+            spectre_cmd: Self::env_with_profile("VB_SPECTRE_CMD", profile)
                 .unwrap_or_else(|| "spectre".into()),
-            spectre_args: env::var("VB_SPECTRE_ARGS")
-                .ok()
+            spectre_args: Self::env_with_profile("VB_SPECTRE_ARGS", profile)
                 .map(|v| shlex::split(&v).unwrap_or_default())
                 .unwrap_or_default(),
         })
+    }
+
+    /// Derive a stable default port from the current username.
+    /// Range: 65000-65499, deterministic per user to reduce collisions.
+    fn default_port() -> u16 {
+        let user = env::var("USER")
+            .or_else(|_| env::var("USERNAME"))
+            .unwrap_or_default();
+        let hash: u16 = user.bytes().map(|b| b as u16).sum::<u16>() % 500;
+        65000 + hash
     }
 
     pub fn is_remote(&self) -> bool {

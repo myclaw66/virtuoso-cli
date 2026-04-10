@@ -57,6 +57,10 @@ struct Cli {
     /// Also reads from VB_SESSION environment variable.
     #[arg(long, global = true)]
     session: Option<String>,
+
+    /// Connection profile name (reads VB_REMOTE_HOST_<profile> etc.)
+    #[arg(long, short, global = true)]
+    profile: Option<String>,
 }
 
 #[derive(Clone, ValueEnum)]
@@ -763,6 +767,11 @@ fn parse_key_val(s: &str) -> std::result::Result<(String, String), String> {
 
 fn main() {
     let cli = Cli::parse();
+
+    // Propagate profile to config layer via env var
+    if let Some(ref profile) = cli.profile {
+        std::env::set_var("VB_PROFILE", profile);
+    }
 
     let log_level = if cli.verbose {
         "debug"

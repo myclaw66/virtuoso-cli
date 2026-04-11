@@ -37,6 +37,7 @@ Control Cadence Virtuoso from anywhere — locally or remotely. Designed for AI 
 - **Spectre simulation** — Sync/async simulation, job registry with status tracking, PSF parser
 - **Multi-profile support** — `--profile` flag for concurrent connections to multiple Virtuoso instances
 - **Command logging** — All SKILL executions logged to `~/.cache/virtuoso_bridge/logs/commands.log`
+- **Interactive TUI** — `vtui` terminal dashboard showing sessions, jobs, tunnel status
 
 ### Installation
 
@@ -44,6 +45,7 @@ Control Cadence Virtuoso from anywhere — locally or remotely. Designed for AI 
 
 ```bash
 cargo install virtuoso-cli                          # vcli (main CLI)
+cargo install virtuoso-cli --bin vtui               # vtui (interactive TUI dashboard)
 cargo install virtuoso-cli --features daemon        # virtuoso-daemon (bridge backend)
 ```
 
@@ -52,11 +54,10 @@ cargo install virtuoso-cli --features daemon        # virtuoso-daemon (bridge ba
 ```bash
 git clone https://github.com/deanyou/virtuoso-cli.git
 cd virtuoso-cli
-cargo install --path . --bin vcli
-cargo install --path . --bin virtuoso-daemon --features daemon
+cargo install --path .
 ```
 
-Both binaries are installed to `~/.cargo/bin/`.
+All binaries (`vcli`, `vtui`) are installed to `~/.cargo/bin/`.
 
 > **Note**: Do not name the binary `virtuoso` — it conflicts with Cadence's `virtuoso` executable.
 
@@ -227,6 +228,7 @@ vcli skill exec    # connects to port N
 - **Spectre 仿真** — 同步/异步仿真、Job 注册与状态跟踪、PSF 结果解析
 - **多 Profile 支持** — `--profile` 参数支持同时连接多个 Virtuoso 实例
 - **命令日志** — 所有 SKILL 调用记录到 `~/.cache/virtuoso_bridge/logs/commands.log`
+- **交互式 TUI** — `vtui` 终端仪表盘，实时显示 session、仿真 job、隧道状态
 
 ### 安装
 
@@ -234,6 +236,7 @@ vcli skill exec    # connects to port N
 
 ```bash
 cargo install virtuoso-cli                          # vcli（主 CLI）
+cargo install virtuoso-cli --bin vtui               # vtui（交互式 TUI 仪表盘）
 cargo install virtuoso-cli --features daemon        # virtuoso-daemon（bridge 后端）
 ```
 
@@ -242,8 +245,7 @@ cargo install virtuoso-cli --features daemon        # virtuoso-daemon（bridge �
 ```bash
 git clone https://github.com/deanyou/virtuoso-cli.git
 cd virtuoso-cli
-cargo install --path . --bin vcli
-cargo install --path . --bin virtuoso-daemon --features daemon
+cargo install --path .
 ```
 
 安装后 `vcli` 和 `virtuoso-daemon` 均位于 `~/.cargo/bin/`。

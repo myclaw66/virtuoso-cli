@@ -2,7 +2,7 @@
 
 ## Lifecycle State
 - Last Event: self-improve
-- Last Note: knowledge: skill-sprintf-float-coords, async-job-lazy-refresh; decision: session-vs-profile
+- Last Note: knowledge: ratatui-tui-architecture; maxim: test-with-ci-toolchain-before-push
 
 ## Project Paths
 - Project Root: `/home/meow/git/virtuoso-cli`

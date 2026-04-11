@@ -22,6 +22,10 @@ pub struct Job {
     pub created: String,
     pub finished: Option<String>,
     pub error: Option<String>,
+    #[serde(default)]
+    pub remote_host: Option<String>,
+    #[serde(default)]
+    pub remote_dir: Option<String>,
 }
 
 impl Job {
@@ -72,41 +76,74 @@ impl Job {
     }
 
     /// Check if a running job's process is still alive; update status if not.
+    /// Works for both local (kill -0) and remote (ssh kill -0) jobs.
     pub fn refresh(&mut self) -> Result<()> {
         if self.status != JobStatus::Running {
             return Ok(());
         }
         if let Some(pid) = self.pid {
-            // Check if process exists via kill(pid, 0)
-            let alive = unsafe { libc::kill(pid as i32, 0) } == 0;
+            let alive = if let Some(ref host) = self.remote_host {
+                // Remote: check via SSH
+                std::process::Command::new("ssh")
+                    .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=3"])
+                    .arg(host)
+                    .arg(format!("kill -0 {pid}"))
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .map(|s| s.success())
+                    .unwrap_or(false)
+            } else {
+                // Local: direct signal check
+                (unsafe { libc::kill(pid as i32, 0) }) == 0
+            };
+
             if !alive {
-                // Process exited — check spectre.out for success/failure
-                let log_dir = std::path::Path::new(&self.netlist_path)
-                    .parent()
-                    .unwrap_or(std::path::Path::new("."));
-                let log = log_dir.join("spectre.out");
-                if log.exists() {
-                    let content = fs::read_to_string(&log).unwrap_or_default();
-                    if content.contains("completes with 0 errors") {
-                        self.status = JobStatus::Completed;
-                    } else {
-                        self.status = JobStatus::Failed;
-                        // Extract last error line
-                        self.error = content
-                            .lines()
-                            .rev()
-                            .find(|l| l.contains("Error") || l.contains("error"))
-                            .map(|l| l.trim().to_string());
-                    }
-                } else {
-                    self.status = JobStatus::Failed;
-                    self.error = Some("process exited, no log found".into());
-                }
-                self.finished = Some(chrono::Local::now().to_rfc3339());
-                self.save()?;
+                self.finish_from_log()?;
             }
         }
         Ok(())
+    }
+
+    /// Determine job outcome from spectre.out log file.
+    fn finish_from_log(&mut self) -> Result<()> {
+        let log_dir = std::path::Path::new(&self.netlist_path)
+            .parent()
+            .unwrap_or(std::path::Path::new("."));
+        let log = log_dir.join("spectre.out");
+
+        // For remote jobs, try to fetch log via SSH first
+        let content =
+            if let (Some(ref host), Some(ref rdir)) = (&self.remote_host, &self.remote_dir) {
+                let out = std::process::Command::new("ssh")
+                    .args(["-o", "BatchMode=yes", "-o", "ConnectTimeout=3"])
+                    .arg(host)
+                    .arg(format!("cat {rdir}/spectre.out 2>/dev/null"))
+                    .output()
+                    .ok();
+                out.map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                    .unwrap_or_default()
+            } else if log.exists() {
+                fs::read_to_string(&log).unwrap_or_default()
+            } else {
+                String::new()
+            };
+
+        if content.contains("completes with 0 errors") {
+            self.status = JobStatus::Completed;
+        } else if content.is_empty() {
+            self.status = JobStatus::Failed;
+            self.error = Some("process exited, no log found".into());
+        } else {
+            self.status = JobStatus::Failed;
+            self.error = content
+                .lines()
+                .rev()
+                .find(|l| l.contains("Error") || l.contains("error"))
+                .map(|l| l.trim().to_string());
+        }
+        self.finished = Some(chrono::Local::now().to_rfc3339());
+        self.save()
     }
 
     pub fn cancel(&mut self) -> Result<()> {

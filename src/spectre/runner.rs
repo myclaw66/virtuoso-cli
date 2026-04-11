@@ -92,11 +92,10 @@ impl SpectreSimulator {
     }
 
     /// Launch simulation in background, return job ID immediately.
+    /// Works for both local and remote (via SSH nohup).
     pub fn run_async(&self, netlist: &str) -> Result<Job> {
         if self.remote {
-            return Err(VirtuosoError::Config(
-                "async remote simulation not yet supported".into(),
-            ));
+            return self.run_async_remote(netlist);
         }
 
         let run_id = Uuid::new_v4().to_string()[..8].to_string();
@@ -148,9 +147,65 @@ impl SpectreSimulator {
             created: chrono::Local::now().to_rfc3339(),
             finished: None,
             error: None,
+            remote_host: None,
+            remote_dir: None,
         };
         job.save()?;
         // Process runs detached — status checked lazily via Job::refresh()
+        Ok(job)
+    }
+
+    fn run_async_remote(&self, netlist: &str) -> Result<Job> {
+        let runner = self.ssh_runner.as_ref().ok_or_else(|| {
+            VirtuosoError::Execution("no SSH runner for remote async simulation".into())
+        })?;
+
+        let run_id = Uuid::new_v4().to_string()[..8].to_string();
+        let remote_dir = format!("/tmp/virtuoso_bridge/spectre/{run_id}");
+
+        // Create dir + upload netlist
+        runner.run_command(&format!("mkdir -p {remote_dir}"), None)?;
+        runner.upload_text(netlist, &format!("{remote_dir}/input.scs"))?;
+
+        // Build spectre command
+        let extra = if self.spectre_args.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", self.spectre_args.join(" "))
+        };
+        // Source login profile for PATH + license env (non-interactive SSH lacks them).
+        // Covers bash (.bash_profile/.bashrc) and sh (.profile).
+        // Use VB_SPECTRE_CMD=<absolute path> if spectre is still not found.
+        let spectre_cmd = format!(
+            ". /etc/profile 2>/dev/null; . ~/.bash_profile 2>/dev/null; . ~/.bashrc 2>/dev/null; \
+             cd {remote_dir} && nohup {cmd} -64 input.scs +escchars +log spectre.out \
+             -format {fmt} -raw raw +lqtimeout 900 -maxw 5 -maxn 5 +logstatus{extra} \
+             > /dev/null 2>&1 & echo $!",
+            cmd = self.spectre_cmd,
+            fmt = self.output_format,
+        );
+
+        // Launch and capture PID
+        let result = runner.run_command(&spectre_cmd, Some(10))?;
+        let pid: u32 = result
+            .stdout
+            .trim()
+            .parse()
+            .map_err(|_| VirtuosoError::Execution(format!("bad PID: {}", result.stdout)))?;
+
+        let job = Job {
+            id: run_id,
+            status: JobStatus::Running,
+            netlist_path: format!("{remote_dir}/input.scs"),
+            raw_dir: Some(format!("{remote_dir}/raw")),
+            pid: Some(pid),
+            created: chrono::Local::now().to_rfc3339(),
+            finished: None,
+            error: None,
+            remote_host: Some(runner.remote_target()),
+            remote_dir: Some(remote_dir),
+        };
+        job.save()?;
         Ok(job)
     }
 

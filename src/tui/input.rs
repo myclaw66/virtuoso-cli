@@ -7,10 +7,11 @@ pub enum EventAction {
     Refresh,
     ShowLog,
     CancelJob,
+    SaveConfig,
 }
 
 pub fn handle_key(state: &mut TuiState, key: KeyEvent) -> EventAction {
-    // Log overlay has its own keys
+    // Log overlay
     if state.show_log {
         match key.code {
             KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('l') => {
@@ -33,6 +34,32 @@ pub fn handle_key(state: &mut TuiState, key: KeyEvent) -> EventAction {
         return EventAction::Continue;
     }
 
+    // Config editing mode
+    if state.config_editing {
+        match key.code {
+            KeyCode::Esc => {
+                state.config_editing = false;
+                state.config_edit_buf.clear();
+            }
+            KeyCode::Enter => {
+                if let Some(f) = state.config_fields.get_mut(state.config_selected) {
+                    f.value = state.config_edit_buf.clone();
+                }
+                state.config_editing = false;
+                state.config_edit_buf.clear();
+                return EventAction::SaveConfig;
+            }
+            KeyCode::Backspace => {
+                state.config_edit_buf.pop();
+            }
+            KeyCode::Char(c) => {
+                state.config_edit_buf.push(c);
+            }
+            _ => {}
+        }
+        return EventAction::Continue;
+    }
+
     match key.code {
         KeyCode::Char('q') => EventAction::Quit,
         KeyCode::Char('r') => EventAction::Refresh,
@@ -42,8 +69,18 @@ pub fn handle_key(state: &mut TuiState, key: KeyEvent) -> EventAction {
         KeyCode::Tab => {
             state.active_tab = match state.active_tab {
                 ActiveTab::Sessions => ActiveTab::Jobs,
-                ActiveTab::Jobs => ActiveTab::Sessions,
+                ActiveTab::Jobs => ActiveTab::Config,
+                ActiveTab::Config => ActiveTab::Sessions,
             };
+            EventAction::Continue
+        }
+
+        // Enter edit mode in Config tab
+        KeyCode::Enter | KeyCode::Char('i') if state.active_tab == ActiveTab::Config => {
+            if let Some(f) = state.config_fields.get(state.config_selected) {
+                state.config_edit_buf = f.value.clone();
+                state.config_editing = true;
+            }
             EventAction::Continue
         }
 
@@ -58,6 +95,12 @@ pub fn handle_key(state: &mut TuiState, key: KeyEvent) -> EventAction {
                 ActiveTab::Jobs => {
                     if !state.jobs.is_empty() {
                         state.selected_job = (state.selected_job + 1) % state.jobs.len();
+                    }
+                }
+                ActiveTab::Config => {
+                    if !state.config_fields.is_empty() {
+                        state.config_selected =
+                            (state.config_selected + 1) % state.config_fields.len();
                     }
                 }
             }
@@ -81,6 +124,15 @@ pub fn handle_key(state: &mut TuiState, key: KeyEvent) -> EventAction {
                             state.jobs.len() - 1
                         } else {
                             state.selected_job - 1
+                        };
+                    }
+                }
+                ActiveTab::Config => {
+                    if !state.config_fields.is_empty() {
+                        state.config_selected = if state.config_selected == 0 {
+                            state.config_fields.len() - 1
+                        } else {
+                            state.config_selected - 1
                         };
                     }
                 }

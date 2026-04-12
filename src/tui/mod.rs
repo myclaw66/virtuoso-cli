@@ -91,6 +91,10 @@ fn run_loop(
                         state.set_status(&format!("Cancelled job {}", job.id));
                     }
                 }
+                input::EventAction::SaveConfig => match state.save_config() {
+                    Ok(_) => state.set_status("Config saved to .env"),
+                    Err(e) => state.set_status(&format!("Save failed: {e}")),
+                },
                 input::EventAction::Continue => {}
             }
         }

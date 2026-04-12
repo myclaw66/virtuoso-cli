@@ -50,6 +50,7 @@ fn render_left_panel(frame: &mut Frame, state: &TuiState, theme: &Theme, area: R
     let tab_title = match state.active_tab {
         ActiveTab::Sessions => " Sessions ",
         ActiveTab::Jobs => " Jobs ",
+        ActiveTab::Config => " Config ",
     };
 
     let block = Block::default()
@@ -129,6 +130,27 @@ fn render_left_panel(frame: &mut Frame, state: &TuiState, theme: &Theme, area: R
                 frame.render_widget(list, area);
             }
         }
+        ActiveTab::Config => {
+            let items: Vec<ListItem> = state
+                .config_fields
+                .iter()
+                .enumerate()
+                .map(|(i, f)| {
+                    let style = if i == state.config_selected {
+                        Style::default()
+                            .fg(theme.primary)
+                            .bg(theme.bg_selected)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(theme.text_dim)
+                    };
+                    let display = f.key.strip_prefix("VB_").unwrap_or(&f.key);
+                    ListItem::new(Line::from(Span::styled(format!(" {display}"), style)))
+                })
+                .collect();
+            let list = List::new(items).block(block);
+            frame.render_widget(list, area);
+        }
     }
 }
 
@@ -196,6 +218,46 @@ fn render_detail(frame: &mut Frame, state: &TuiState, theme: &Theme, area: Rect)
                 let p = Paragraph::new("  No job selected")
                     .block(block)
                     .style(Style::default().fg(theme.text_dim));
+                frame.render_widget(p, area);
+            }
+        }
+        ActiveTab::Config => {
+            if let Some(f) = state.config_fields.get(state.config_selected) {
+                let mut lines = vec![
+                    kv_line("  Key:   ", &f.key, theme, Some(theme.primary)),
+                    kv_line("  Hint:  ", f.hint, theme, Some(theme.text_dim)),
+                    Line::default(),
+                ];
+                if state.config_editing {
+                    lines.push(kv_line("  Value: ", "", theme, None));
+                    lines.push(Line::from(vec![
+                        Span::styled("  > ", Style::default().fg(theme.accent)),
+                        Span::styled(
+                            format!("{}_", &state.config_edit_buf),
+                            Style::default()
+                                .fg(theme.text)
+                                .add_modifier(Modifier::UNDERLINED),
+                        ),
+                    ]));
+                    lines.push(Line::default());
+                    lines.push(Line::from(Span::styled(
+                        "  Enter=save  Esc=cancel",
+                        Style::default().fg(theme.text_dim),
+                    )));
+                } else {
+                    let val = if f.value.is_empty() {
+                        "(not set)"
+                    } else {
+                        &f.value
+                    };
+                    lines.push(kv_line("  Value: ", val, theme, Some(theme.accent)));
+                    lines.push(Line::default());
+                    lines.push(Line::from(Span::styled(
+                        "  Enter/i=edit  Tab=switch",
+                        Style::default().fg(theme.text_dim),
+                    )));
+                }
+                let p = Paragraph::new(lines).block(block);
                 frame.render_widget(p, area);
             }
         }

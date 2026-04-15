@@ -51,13 +51,15 @@ impl MaestroOps {
         )
     }
 
-    /// Enable an analysis type on a setup.
+    /// Enable an analysis type on a session (resolves setup name internally).
     /// maeSetAnalysis(t_setupName t_analysisType) — returns t on success.
     /// analysisType: "ac" | "dc" | "tran" | "noise" | etc.
-    pub fn set_analysis(&self, setup: &str, analysis_type: &str) -> String {
-        let setup = escape_skill_string(setup);
+    pub fn set_analysis(&self, session: &str, analysis_type: &str) -> String {
+        let session = escape_skill_string(session);
         let analysis_type = escape_skill_string(analysis_type);
-        format!(r#"maeSetAnalysis("{setup}" "{analysis_type}")"#)
+        format!(
+            r#"let((setup) setup = car(maeGetSetup(?session "{session}")) maeSetAnalysis(setup "{analysis_type}"))"#
+        )
     }
 
     /// Run simulation asynchronously. Returns immediately.

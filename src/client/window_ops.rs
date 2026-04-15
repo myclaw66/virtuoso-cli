@@ -32,9 +32,7 @@ impl WindowOps {
     /// after the capture to distinguish success from failure.
     pub fn screenshot(&self, path: &str) -> String {
         let path = escape_skill_string(path);
-        format!(
-            r#"let((cmd) cmd = sprintf(nil "import -window root -display %s {path}" getShellEnvVar("DISPLAY")) system(cmd) if(isFile("{path}") "{path}" nil))"#
-        )
+        Self::skill_capture(&path)
     }
 
     /// Capture a screenshot of the first window whose name matches a regex pattern.
@@ -43,8 +41,16 @@ impl WindowOps {
     pub fn screenshot_by_pattern(&self, path: &str, pattern: &str) -> String {
         let path = escape_skill_string(path);
         let pattern = escape_skill_string(pattern);
+        let capture = Self::skill_capture(&path);
         format!(
-            r#"let((matched cmd) matched = nil foreach(w hiGetWindowList() when(rexMatchp("{pattern}" hiGetWindowName(w)) matched = t)) if(matched let((cmd) cmd = sprintf(nil "import -window root -display %s {path}" getShellEnvVar("DISPLAY")) system(cmd) if(isFile("{path}") "{path}" nil)) "no-match"))"#
+            r#"let((matched) matched = nil foreach(w hiGetWindowList() when(rexMatchp("{pattern}" hiGetWindowName(w)) matched = t)) if(matched {capture} "no-match"))"#
+        )
+    }
+
+    /// SKILL fragment: run X11 import and return path on success, nil on failure.
+    fn skill_capture(escaped_path: &str) -> String {
+        format!(
+            r#"let((cmd) cmd = sprintf(nil "import -window root -display %s {escaped_path}" getShellEnvVar("DISPLAY")) system(cmd) if(isFile("{escaped_path}") "{escaped_path}" nil))"#
         )
     }
 }

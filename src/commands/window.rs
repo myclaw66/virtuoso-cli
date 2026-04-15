@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 pub fn list() -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
     let r = client.execute_skill(&client.window.list_windows(), None)?;
-    if !r.ok() {
+    if !r.skill_ok() {
         return Err(VirtuosoError::Execution(format!(
             "failed to list windows: {}",
             r.errors.join("; ")

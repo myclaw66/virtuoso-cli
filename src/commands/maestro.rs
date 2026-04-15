@@ -67,21 +67,11 @@ pub fn get_analyses(session: &str) -> Result<Value> {
 
 pub fn set_analysis(session: &str, analysis_type: &str) -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
-    // Resolve setup name from session, then enable analysis type.
-    let setup_skill = format!(r#"car(maeGetSetup(?session "{session}"))"#);
-    let setup_r = client.execute_skill(&setup_skill, None)?;
-    if !setup_r.skill_ok() {
-        return Err(VirtuosoError::NotFound(format!(
-            "no setup found for session '{session}'"
-        )));
-    }
-    let setup = setup_r.output.trim_matches('"');
-    let skill = client.maestro.set_analysis(setup, analysis_type);
+    let skill = client.maestro.set_analysis(session, analysis_type);
     let r = client.execute_skill(&skill, None)?;
     Ok(json!({
         "status": if r.skill_ok() { "success" } else { "error" },
         "session": session,
-        "setup": setup,
         "analysis": analysis_type,
     }))
 }

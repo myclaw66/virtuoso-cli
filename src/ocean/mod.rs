@@ -262,3 +262,67 @@ pub fn parse_skill_list(output: &str) -> Vec<Vec<String>> {
 
     results
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn setup_skill_format() {
+        let s = setup_skill("myLib", "myCell", "schematic", "spectre");
+        assert!(s.contains("design(\"myLib\" \"myCell\" \"schematic\")"), "{s}");
+        assert!(s.contains("spectre"), "{s}");
+        assert!(s.ends_with("resultsDir()"), "{s}");
+    }
+
+    #[test]
+    fn setup_skill_escapes_lib() {
+        let s = setup_skill(r#"my"Lib"#, "cell", "schematic", "spectre");
+        assert!(s.contains(r#"my\"Lib"#), "{s}");
+    }
+
+    #[test]
+    fn analysis_skill_simple_boolean_unquoted() {
+        let mut params = HashMap::new();
+        params.insert("start".into(), "1e-9".into());
+        params.insert("stop".into(), "1e-6".into());
+        params.insert("conservative".into(), "t".into());
+        let s = analysis_skill_simple("tran", &params);
+        assert!(s.starts_with("analysis('tran"), "{s}");
+        // boolean 't' must not be quoted
+        assert!(s.contains("?conservative t"), "{s}");
+    }
+
+    #[test]
+    fn analysis_skill_simple_string_quoted() {
+        let mut params = HashMap::new();
+        params.insert("errpreset".into(), "moderate".into());
+        let s = analysis_skill_simple("tran", &params);
+        assert!(s.contains("?errpreset \"moderate\""), "{s}");
+    }
+
+    #[test]
+    fn sweep_skill_uses_desvar() {
+        let values = vec![1.0, 1.2, 1.8];
+        let exprs = vec!["VT(\"M1\" \"VGS\")".to_string()];
+        let s = sweep_skill("Vdd", &values, "dc", &exprs);
+        assert!(s.contains("desVar(\"Vdd\" val)"), "{s}");
+        assert!(s.contains("run()"), "{s}");
+        assert!(s.contains("reverse(results)"), "{s}");
+    }
+
+    #[test]
+    fn parse_skill_list_nested() {
+        let rows = parse_skill_list("((1.0 2.0) (3.0 4.0))");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0], vec!["1.0", "2.0"]);
+        assert_eq!(rows[1], vec!["3.0", "4.0"]);
+    }
+
+    #[test]
+    fn parse_skill_list_single_value() {
+        let rows = parse_skill_list("42");
+        assert_eq!(rows, vec![vec!["42"]]);
+    }
+}

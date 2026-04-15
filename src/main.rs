@@ -808,6 +808,173 @@ fn parse_key_val(s: &str) -> std::result::Result<(String, String), String> {
     Ok((s[..pos].to_string(), s[pos + 1..].to_string()))
 }
 
+// ── Per-group dispatch helpers ───────────────────────────────────────
+
+fn dispatch_tunnel(cmd: TunnelCmd, format: OutputFormat) -> error::Result<serde_json::Value> {
+    match cmd {
+        TunnelCmd::Start { timeout, dry_run } => commands::tunnel::start(Some(timeout), dry_run),
+        TunnelCmd::Stop { force, dry_run } => commands::tunnel::stop(force, dry_run),
+        TunnelCmd::Restart { timeout } => commands::tunnel::restart(Some(timeout)),
+        TunnelCmd::Status => commands::tunnel::status(format),
+        TunnelCmd::Diagnose => commands::tunnel::diagnose(),
+    }
+}
+
+fn dispatch_skill(cmd: SkillCmd) -> error::Result<serde_json::Value> {
+    match cmd {
+        SkillCmd::Exec { code, timeout } => commands::skill::exec(&code, timeout),
+        SkillCmd::Load { file } => commands::skill::load(&file),
+    }
+}
+
+fn dispatch_cell(cmd: CellCmd) -> error::Result<serde_json::Value> {
+    match cmd {
+        CellCmd::Open { lib, cell, view, mode, dry_run } => {
+            commands::cell::open(&lib, &cell, &view, &mode, dry_run)
+        }
+        CellCmd::Save => commands::cell::save(),
+        CellCmd::Close => commands::cell::close(),
+        CellCmd::Info => commands::cell::info(),
+    }
+}
+
+fn dispatch_sim(cmd: SimCmd) -> error::Result<serde_json::Value> {
+    match cmd {
+        SimCmd::Setup { lib, cell, view, simulator } => {
+            commands::sim::setup(&lib, &cell, &view, &simulator)
+        }
+        SimCmd::Run {
+            analysis,
+            stop, start, from, to, step, dec, errpreset,
+            param, timeout,
+        } => {
+            let mut params: std::collections::HashMap<String, String> =
+                param.into_iter().collect();
+            if let Some(v) = stop    { params.insert("stop".into(), v); }
+            if let Some(v) = start   { params.insert("start".into(), v); }
+            if let Some(v) = from    { params.insert("from".into(), v); }
+            if let Some(v) = to      { params.insert("to".into(), v); }
+            if let Some(v) = step    { params.insert("step".into(), v); }
+            if let Some(v) = dec     { params.insert("dec".into(), v); }
+            if let Some(v) = errpreset { params.insert("errpreset".into(), v); }
+            commands::sim::run(&analysis, &params, timeout)
+        }
+        SimCmd::Measure { expr, analysis } => commands::sim::measure(&analysis, &expr),
+        SimCmd::Sweep { var, from, to, step, measure, analysis, timeout } => {
+            commands::sim::sweep(&var, from, to, step, &analysis, &measure, timeout)
+        }
+        SimCmd::Corner { file, timeout } => commands::sim::corner(&file, timeout),
+        SimCmd::Results => commands::sim::results(),
+        SimCmd::Netlist { recreate } => commands::sim::netlist(recreate),
+        SimCmd::RunAsync { netlist } => commands::sim::run_async(&netlist),
+        SimCmd::JobStatus { id } => commands::sim::job_status(&id),
+        SimCmd::JobList => commands::sim::job_list(),
+        SimCmd::JobCancel { id } => commands::sim::job_cancel(&id),
+    }
+}
+
+fn dispatch_process(cmd: ProcessCmd) -> error::Result<serde_json::Value> {
+    match cmd {
+        ProcessCmd::Char {
+            lib, cell, view, inst, r#type, l_values,
+            vgs_start, vgs_stop, vgs_step, output, timeout,
+            netlist, model_file, model_section, vdd,
+            nmos_model, pmos_model, inst_name, vds,
+        } => {
+            let l_vals: Vec<f64> = l_values
+                .split(',')
+                .filter_map(|s| s.trim().parse().ok())
+                .collect();
+            if netlist {
+                let device_model = if r#type == "pmos" { &pmos_model } else { &nmos_model };
+                let resolved_inst = inst_name.unwrap_or_else(|| {
+                    if r#type == "pmos" { "PM0".into() } else { "NM0".into() }
+                });
+                commands::process::char_netlist(
+                    &r#type, &l_vals, vgs_start, vgs_stop, vgs_step,
+                    &output, &model_file, &model_section, vdd, device_model, &resolved_inst, vds,
+                )
+            } else {
+                commands::process::char(
+                    &lib, &cell, &view, &inst, &r#type, &l_vals,
+                    vgs_start, vgs_stop, vgs_step, &output, timeout,
+                )
+            }
+        }
+    }
+}
+
+fn dispatch_design(cmd: DesignCmd, format: OutputFormat) -> error::Result<serde_json::Value> {
+    match cmd {
+        DesignCmd::Size { gmid, l, gm, id, pdk, r#type } => {
+            commands::design::size(gmid, l, gm, id, &pdk, &r#type, format)
+        }
+        DesignCmd::Explore { pdk, r#type } => commands::design::explore(&pdk, &r#type, format),
+    }
+}
+
+fn dispatch_maestro(cmd: MaestroCmd) -> error::Result<serde_json::Value> {
+    match cmd {
+        MaestroCmd::Open { lib, cell, view } => commands::maestro::open(&lib, &cell, &view),
+        MaestroCmd::Close { session } => commands::maestro::close(&session),
+        MaestroCmd::ListSessions => commands::maestro::list_sessions(),
+        MaestroCmd::SetVar { session, name, value } => {
+            commands::maestro::set_var(&session, &name, &value)
+        }
+        MaestroCmd::GetAnalyses { session } => commands::maestro::get_analyses(&session),
+        MaestroCmd::SetAnalysis { session, analysis } => {
+            commands::maestro::set_analysis(&session, &analysis)
+        }
+        MaestroCmd::AddOutput { session, name, expr } => {
+            commands::maestro::add_output(&session, &name, &expr)
+        }
+        MaestroCmd::Run { session } => commands::maestro::run(&session),
+        MaestroCmd::Save { session } => commands::maestro::save(&session),
+        MaestroCmd::Export { session, path } => commands::maestro::export(&session, &path),
+    }
+}
+
+fn dispatch_schematic(cmd: SchematicCmd) -> error::Result<serde_json::Value> {
+    match cmd {
+        SchematicCmd::Open { lib, cell, view } => commands::schematic::open(&lib, &cell, &view),
+        SchematicCmd::Place { master, name, x, y, orient, params } => {
+            let param_pairs: Vec<(String, String)> = params
+                .unwrap_or_default()
+                .split(',')
+                .filter(|s| !s.is_empty())
+                .filter_map(|s| {
+                    let (k, v) = s.split_once('=')?;
+                    Some((k.to_string(), v.to_string()))
+                })
+                .collect();
+            commands::schematic::place(&master, &name, x, y, &orient, &param_pairs)
+        }
+        SchematicCmd::Wire { net, points } => commands::schematic::wire_from_strings(&net, &points),
+        SchematicCmd::Conn { net, from, to } => commands::schematic::conn(&net, &from, &to),
+        SchematicCmd::Label { net, x, y } => commands::schematic::label(&net, x, y),
+        SchematicCmd::Pin { net, dir, x, y } => commands::schematic::pin(&net, &dir, x, y),
+        SchematicCmd::Check => commands::schematic::check(),
+        SchematicCmd::Save => commands::schematic::save(),
+        SchematicCmd::Build { spec } => commands::schematic::build(&spec),
+        SchematicCmd::ListInstances => commands::schematic::list_instances(),
+        SchematicCmd::ListNets => commands::schematic::list_nets(),
+        SchematicCmd::ListPins => commands::schematic::list_pins(),
+        SchematicCmd::GetParams { inst } => commands::schematic::get_params(&inst),
+    }
+}
+
+fn dispatch_window(cmd: WindowCmd) -> error::Result<serde_json::Value> {
+    match cmd {
+        WindowCmd::List => commands::window::list(),
+        WindowCmd::DismissDialog { action, dry_run } => {
+            commands::window::dismiss_dialog(&action, dry_run)
+        }
+        WindowCmd::Screenshot { path, window } => {
+            commands::window::screenshot(&path, window.as_deref())
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -854,239 +1021,10 @@ fn main() {
 
     let is_status_cmd = matches!(&cli.command, Commands::Tunnel(TunnelCmd::Status));
 
-    let result = match cli.command {
-        Commands::Init { if_not_exists } => commands::init::run(if_not_exists),
-        Commands::Tunnel(cmd) => match cmd {
-            TunnelCmd::Start { timeout, dry_run } => {
-                commands::tunnel::start(Some(timeout), dry_run)
-            }
-            TunnelCmd::Stop { force, dry_run } => commands::tunnel::stop(force, dry_run),
-            TunnelCmd::Restart { timeout } => commands::tunnel::restart(Some(timeout)),
-            TunnelCmd::Status => commands::tunnel::status(format),
-            TunnelCmd::Diagnose => commands::tunnel::diagnose(),
-        },
-        Commands::Skill(cmd) => match cmd {
-            SkillCmd::Exec { code, timeout } => commands::skill::exec(&code, timeout),
-            SkillCmd::Load { file } => commands::skill::load(&file),
-        },
-        Commands::Cell(cmd) => match cmd {
-            CellCmd::Open {
-                lib,
-                cell,
-                view,
-                mode,
-                dry_run,
-            } => commands::cell::open(&lib, &cell, &view, &mode, dry_run),
-            CellCmd::Save => commands::cell::save(),
-            CellCmd::Close => commands::cell::close(),
-            CellCmd::Info => commands::cell::info(),
-        },
-        Commands::Sim(cmd) => match cmd {
-            SimCmd::Setup {
-                lib,
-                cell,
-                view,
-                simulator,
-            } => commands::sim::setup(&lib, &cell, &view, &simulator),
-            SimCmd::Run {
-                analysis,
-                stop,
-                start,
-                from,
-                to,
-                step,
-                dec,
-                errpreset,
-                param,
-                timeout,
-            } => {
-                let mut params: std::collections::HashMap<String, String> =
-                    param.into_iter().collect();
-                if let Some(v) = stop {
-                    params.insert("stop".into(), v);
-                }
-                if let Some(v) = start {
-                    params.insert("start".into(), v);
-                }
-                if let Some(v) = from {
-                    params.insert("from".into(), v);
-                }
-                if let Some(v) = to {
-                    params.insert("to".into(), v);
-                }
-                if let Some(v) = step {
-                    params.insert("step".into(), v);
-                }
-                if let Some(v) = dec {
-                    params.insert("dec".into(), v);
-                }
-                if let Some(v) = errpreset {
-                    params.insert("errpreset".into(), v);
-                }
-                commands::sim::run(&analysis, &params, timeout)
-            }
-            SimCmd::Measure { expr, analysis } => commands::sim::measure(&analysis, &expr),
-            SimCmd::Sweep {
-                var,
-                from,
-                to,
-                step,
-                measure,
-                analysis,
-                timeout,
-            } => commands::sim::sweep(&var, from, to, step, &analysis, &measure, timeout),
-            SimCmd::Corner { file, timeout } => commands::sim::corner(&file, timeout),
-            SimCmd::Results => commands::sim::results(),
-            SimCmd::Netlist { recreate } => commands::sim::netlist(recreate),
-            SimCmd::RunAsync { netlist } => commands::sim::run_async(&netlist),
-            SimCmd::JobStatus { id } => commands::sim::job_status(&id),
-            SimCmd::JobList => commands::sim::job_list(),
-            SimCmd::JobCancel { id } => commands::sim::job_cancel(&id),
-        },
-        Commands::Process(cmd) => match cmd {
-            ProcessCmd::Char {
-                lib,
-                cell,
-                view,
-                inst,
-                r#type,
-                l_values,
-                vgs_start,
-                vgs_stop,
-                vgs_step,
-                output,
-                timeout,
-                netlist,
-                model_file,
-                model_section,
-                vdd,
-                nmos_model,
-                pmos_model,
-                inst_name,
-                vds,
-            } => {
-                let l_vals: Vec<f64> = l_values
-                    .split(',')
-                    .filter_map(|s| s.trim().parse().ok())
-                    .collect();
-                if netlist {
-                    let device_model = if r#type == "pmos" {
-                        &pmos_model
-                    } else {
-                        &nmos_model
-                    };
-                    let resolved_inst = inst_name.unwrap_or_else(|| {
-                        if r#type == "pmos" {
-                            "PM0".into()
-                        } else {
-                            "NM0".into()
-                        }
-                    });
-                    commands::process::char_netlist(
-                        &r#type,
-                        &l_vals,
-                        vgs_start,
-                        vgs_stop,
-                        vgs_step,
-                        &output,
-                        &model_file,
-                        &model_section,
-                        vdd,
-                        device_model,
-                        &resolved_inst,
-                        vds,
-                    )
-                } else {
-                    commands::process::char(
-                        &lib, &cell, &view, &inst, &r#type, &l_vals, vgs_start, vgs_stop, vgs_step,
-                        &output, timeout,
-                    )
-                }
-            }
-        },
-        Commands::Design(cmd) => match cmd {
-            DesignCmd::Size {
-                gmid,
-                l,
-                gm,
-                id,
-                pdk,
-                r#type,
-            } => commands::design::size(gmid, l, gm, id, &pdk, &r#type, format),
-            DesignCmd::Explore { pdk, r#type } => commands::design::explore(&pdk, &r#type, format),
-        },
-        Commands::Maestro(cmd) => match cmd {
-            MaestroCmd::Open { lib, cell, view } => commands::maestro::open(&lib, &cell, &view),
-            MaestroCmd::Close { session } => commands::maestro::close(&session),
-            MaestroCmd::ListSessions => commands::maestro::list_sessions(),
-            MaestroCmd::SetVar {
-                session,
-                name,
-                value,
-            } => commands::maestro::set_var(&session, &name, &value),
-            MaestroCmd::GetAnalyses { session } => commands::maestro::get_analyses(&session),
-            MaestroCmd::SetAnalysis { session, analysis } => {
-                commands::maestro::set_analysis(&session, &analysis)
-            }
-            MaestroCmd::AddOutput {
-                session,
-                name,
-                expr,
-            } => commands::maestro::add_output(&session, &name, &expr),
-            MaestroCmd::Run { session } => commands::maestro::run(&session),
-            MaestroCmd::Save { session } => commands::maestro::save(&session),
-            MaestroCmd::Export { session, path } => commands::maestro::export(&session, &path),
-        },
-        Commands::Schematic(cmd) => match cmd {
-            SchematicCmd::Open { lib, cell, view } => commands::schematic::open(&lib, &cell, &view),
-            SchematicCmd::Place {
-                master,
-                name,
-                x,
-                y,
-                orient,
-                params,
-            } => {
-                let param_pairs: Vec<(String, String)> = params
-                    .unwrap_or_default()
-                    .split(',')
-                    .filter(|s| !s.is_empty())
-                    .filter_map(|s| {
-                        let (k, v) = s.split_once('=')?;
-                        Some((k.to_string(), v.to_string()))
-                    })
-                    .collect();
-                commands::schematic::place(&master, &name, x, y, &orient, &param_pairs)
-            }
-            SchematicCmd::Wire { net, points } => {
-                commands::schematic::wire_from_strings(&net, &points)
-            }
-            SchematicCmd::Conn { net, from, to } => commands::schematic::conn(&net, &from, &to),
-            SchematicCmd::Label { net, x, y } => commands::schematic::label(&net, x, y),
-            SchematicCmd::Pin { net, dir, x, y } => commands::schematic::pin(&net, &dir, x, y),
-            SchematicCmd::Check => commands::schematic::check(),
-            SchematicCmd::Save => commands::schematic::save(),
-            SchematicCmd::Build { spec } => commands::schematic::build(&spec),
-            SchematicCmd::ListInstances => commands::schematic::list_instances(),
-            SchematicCmd::ListNets => commands::schematic::list_nets(),
-            SchematicCmd::ListPins => commands::schematic::list_pins(),
-            SchematicCmd::GetParams { inst } => commands::schematic::get_params(&inst),
-        },
-        Commands::Session(cmd) => match cmd {
-            SessionCmd::List => commands::session::list(format),
-            SessionCmd::Show { id } => commands::session::show(&id, format),
-        },
-        Commands::Window(cmd) => match cmd {
-            WindowCmd::List => commands::window::list(),
-            WindowCmd::DismissDialog { action, dry_run } => {
-                commands::window::dismiss_dialog(&action, dry_run)
-            }
-            WindowCmd::Screenshot { path, window } => {
-                commands::window::screenshot(&path, window.as_deref())
-            }
-        },
+    // Early-exit commands that manage their own output
+    match &cli.command {
         Commands::Schema { all, noun, verb } => {
-            let schema = if all || noun.is_none() {
+            let schema = if *all || noun.is_none() {
                 commands::schema::show(None, None)
             } else {
                 commands::schema::show(noun.as_deref(), verb.as_deref())
@@ -1101,6 +1039,26 @@ fn main() {
             }
             return;
         }
+        _ => {}
+    }
+
+    let result = match cli.command {
+        Commands::Init { if_not_exists } => commands::init::run(if_not_exists),
+        Commands::Tunnel(cmd) => dispatch_tunnel(cmd, format),
+        Commands::Skill(cmd) => dispatch_skill(cmd),
+        Commands::Cell(cmd) => dispatch_cell(cmd),
+        Commands::Sim(cmd) => dispatch_sim(cmd),
+        Commands::Process(cmd) => dispatch_process(cmd),
+        Commands::Design(cmd) => dispatch_design(cmd, format),
+        Commands::Maestro(cmd) => dispatch_maestro(cmd),
+        Commands::Schematic(cmd) => dispatch_schematic(cmd),
+        Commands::Session(cmd) => match cmd {
+            SessionCmd::List => commands::session::list(format),
+            SessionCmd::Show { id } => commands::session::show(&id, format),
+        },
+        Commands::Window(cmd) => dispatch_window(cmd),
+        // Already handled above; unreachable but required for exhaustive match
+        Commands::Schema { .. } | Commands::Tui => unreachable!(),
     };
 
     match result {

@@ -120,3 +120,52 @@ impl MaestroOps {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ops() -> MaestroOps {
+        MaestroOps
+    }
+
+    #[test]
+    fn open_session_quoting() {
+        let s = ops().open_session("myLib", "myCell", "adexl");
+        assert_eq!(s, r#"maeOpenSetup("myLib" "myCell" "adexl")"#);
+    }
+
+    #[test]
+    fn open_session_escapes_quotes() {
+        let s = ops().open_session(r#"lib"x"#, "cell", "adexl");
+        assert!(s.contains(r#"lib\"x"#), "{s}");
+    }
+
+    #[test]
+    fn set_var_format() {
+        let s = ops().set_var("sess1", "Vdd", "1.8");
+        assert_eq!(s, r#"maeSetVar("Vdd" "1.8")"#);
+    }
+
+    #[test]
+    fn run_simulation_includes_session() {
+        let s = ops().run_simulation("sess1");
+        assert!(s.contains("maeRunSimulation"), "{s}");
+        assert!(s.contains("\"sess1\""), "{s}");
+    }
+
+    #[test]
+    fn set_analysis_resolves_setup() {
+        let s = ops().set_analysis("sess1", "ac");
+        assert!(s.contains("maeGetSetup"), "must resolve setup: {s}");
+        assert!(s.contains("maeSetAnalysis"), "{s}");
+        assert!(s.contains("\"ac\""), "{s}");
+    }
+
+    #[test]
+    fn add_output_includes_expr() {
+        let s = ops().add_output("sess1", "gain", "getData(\"vout\")");
+        assert!(s.contains("maeAddOutput"), "{s}");
+        assert!(s.contains("\"gain\""), "{s}");
+    }
+}

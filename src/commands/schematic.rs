@@ -31,11 +31,9 @@ pub fn place(
     let (lib, cell) = master
         .split_once('/')
         .ok_or_else(|| VirtuosoError::Config("--master must be lib/cell format".into()))?;
-    let _ = orient; // TODO: pass orient to create_instance
-
     let client = VirtuosoClient::from_env()?;
     let mut ed = SchematicEditor::new(&client);
-    ed.add_instance(lib, cell, "symbol", name, (x, y));
+    ed.add_instance(lib, cell, "symbol", name, (x, y), orient);
     for (k, v) in params {
         ed.set_param(name, k, v);
     }
@@ -169,8 +167,14 @@ pub struct SpecInstance {
     pub x: i64,
     #[serde(default)]
     pub y: i64,
+    #[serde(default = "default_orient")]
+    pub orient: String,
     #[serde(default)]
     pub params: HashMap<String, String>,
+}
+
+fn default_orient() -> String {
+    "R0".into()
 }
 
 #[derive(Deserialize)]
@@ -229,7 +233,7 @@ pub fn build(spec_path: &str) -> Result<Value> {
                 inst.name, inst.master
             ))
         })?;
-        ed.add_instance(lib, cell, "symbol", &inst.name, (inst.x, inst.y));
+        ed.add_instance(lib, cell, "symbol", &inst.name, (inst.x, inst.y), &inst.orient);
         for (k, v) in &inst.params {
             ed.set_param(&inst.name, k, v);
         }
@@ -336,17 +340,22 @@ pub fn build(spec_path: &str) -> Result<Value> {
 // ── Read commands ───────────────────────────────────────────────────
 
 /// Parse SKILL JSON output: bridge returns `"\"[...]\""`  — strip outer quotes, unescape inner.
-pub fn parse_skill_json(output: &str) -> Value {
+/// Returns `Err` if the output cannot be parsed as JSON after unescaping.
+pub fn parse_skill_json(output: &str) -> Result<Value> {
     // output is like: "\"[{\\\"name\\\":\\\"M1\\\"}]\""
     // Step 1: strip outer quotes from SKILL string
     let s = output.trim_matches('"');
     // Step 2: try parsing directly (works if no extra escaping)
     if let Ok(v) = serde_json::from_str(s) {
-        return v;
+        return Ok(v);
     }
     // Step 3: unescape \" → " and \\\\ → \ then retry
     let unescaped = s.replace("\\\"", "\"").replace("\\\\", "\\");
-    serde_json::from_str(&unescaped).unwrap_or_else(|_| json!({"raw": output}))
+    serde_json::from_str(&unescaped).map_err(|e| {
+        VirtuosoError::Execution(format!(
+            "Failed to parse SKILL JSON output: {e}. Raw: {output}"
+        ))
+    })
 }
 
 pub fn list_instances() -> Result<Value> {
@@ -359,7 +368,7 @@ pub fn list_instances() -> Result<Value> {
             r.output
         )));
     }
-    Ok(parse_skill_json(&r.output))
+    parse_skill_json(&r.output)
 }
 
 pub fn list_nets() -> Result<Value> {
@@ -372,7 +381,7 @@ pub fn list_nets() -> Result<Value> {
             r.output
         )));
     }
-    Ok(parse_skill_json(&r.output))
+    parse_skill_json(&r.output)
 }
 
 pub fn list_pins() -> Result<Value> {
@@ -385,7 +394,7 @@ pub fn list_pins() -> Result<Value> {
             r.output
         )));
     }
-    Ok(parse_skill_json(&r.output))
+    parse_skill_json(&r.output)
 }
 
 pub fn get_params(inst: &str) -> Result<Value> {
@@ -398,5 +407,5 @@ pub fn get_params(inst: &str) -> Result<Value> {
             inst, r.output
         )));
     }
-    Ok(json!({"instance": inst, "params": parse_skill_json(&r.output)}))
+    Ok(json!({"instance": inst, "params": parse_skill_json(&r.output)?}))
 }

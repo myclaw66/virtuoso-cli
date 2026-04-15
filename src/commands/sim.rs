@@ -86,7 +86,43 @@ pub fn run(analysis: &str, params: &HashMap<String, String>, timeout: u64) -> Re
     }))
 }
 
+/// Reject SKILL expressions that could cause side effects outside of waveform access.
+/// `measure` is intended for read-only PSF queries; block known destructive/execution APIs.
+fn validate_measure_expr(expr: &str) -> Result<()> {
+    // Case-insensitive prefix patterns that indicate non-measurement operations
+    let blocked: &[&str] = &[
+        "system(",
+        "sh(",
+        "ipcbeginprocess(",
+        "ipcwriteprocess(",
+        "ipckillprocess(",
+        "deletefile(",
+        "deletedir(",
+        "copyfile(",
+        "movefile(",
+        "writefile(",
+        "createdir(",
+        "load(",
+        "evalstring(",
+        "hiloaddmenu(",
+    ];
+    let lower = expr.to_lowercase();
+    for pat in blocked {
+        if lower.contains(pat) {
+            return Err(VirtuosoError::Execution(format!(
+                "measure expression contains blocked function '{pat}': \
+                 only waveform access functions are allowed"
+            )));
+        }
+    }
+    Ok(())
+}
+
 pub fn measure(analysis: &str, exprs: &[String]) -> Result<Value> {
+    for expr in exprs {
+        validate_measure_expr(expr)?;
+    }
+
     let client = VirtuosoClient::from_env()?;
 
     // Open results from resultsDir PSF and select result type
@@ -335,6 +371,47 @@ pub fn run_async(netlist_path: &str) -> Result<Value> {
         "pid": job.pid,
         "netlist": netlist_path,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_measure_expr;
+
+    #[test]
+    fn safe_waveform_exprs_are_allowed() {
+        for expr in &[
+            "VT(\"vout\" \"VGS\")",
+            "bandwidth(getData(\"vout\") 3)",
+            "value(getData(\"vout\") 1e-9)",
+            "getData(\"/vout\")",
+            "ymax(getData(\"id\"))",
+            "delay(getData(\"vout\") 0.5)",
+        ] {
+            assert!(validate_measure_expr(expr).is_ok(), "should be allowed: {expr}");
+        }
+    }
+
+    #[test]
+    fn dangerous_exprs_are_blocked() {
+        let cases = [
+            ("system(\"id\")", "system("),
+            ("sh(\"ls\")", "sh("),
+            ("ipcBeginProcess(\"cmd\")", "ipcbeginprocess("),
+            ("deleteFile(\"/etc/hosts\")", "deletefile("),
+            ("load(\"/tmp/evil.il\")", "load("),
+            ("evalstring(\"getData(1)\")", "evalstring("),
+            // case-insensitive
+            ("SYSTEM(\"id\")", "system("),
+            ("DeleteFile(\"/tmp/x\")", "deletefile("),
+        ];
+        for (expr, pat) in &cases {
+            let err = validate_measure_expr(expr).unwrap_err();
+            assert!(
+                err.to_string().contains(pat),
+                "error should mention '{pat}': {err}"
+            );
+        }
+    }
 }
 
 pub fn job_status(id: &str) -> Result<Value> {

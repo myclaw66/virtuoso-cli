@@ -41,7 +41,7 @@ pub fn list_sessions() -> Result<Value> {
             r.output
         )));
     }
-    Ok(parse_skill_json(&r.output))
+    parse_skill_json(&r.output)
 }
 
 pub fn set_var(session: &str, name: &str, value: &str) -> Result<Value> {

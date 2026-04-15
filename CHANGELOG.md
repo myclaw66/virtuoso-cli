@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.1.5] - 2026-04-15
+
+### Added
+- **`Orient` enum** for schematic instance orientation — type-safe replacement for `String`, derives `clap::ValueEnum` + `serde::Deserialize` so both CLI (`--orient`) and JSON spec (`build --spec`) reject invalid values at the boundary. Accepts exactly the 8 Cadence orientations: R0, R90, R180, R270, MX, MY, MXR90, MYR90
+- **`maestro add-output` now resolves setup name from session internally** — previously passed session ID as SKILL output name and user name as setup name, causing `maeAddOutput` to always return nil
+
+### Fixed
+- **`sim::job_list` no longer uses `unwrap_or_default()`** — propagates serialization errors via `VirtuosoError::Execution` per project convention
+- **`parse_skill_json` returns `Result<Value>`** instead of silently falling back to `{"raw": output}` — surfaces SKILL output corruption instead of masking it; all call sites updated to propagate the error
+- **`cv_guard` injection in `schematic_ops.rs`** — every schematic operation now validates the `RB_SCH_CV` global SKILL variable is bound before use, surfacing clear errors instead of cryptic SKILL failures
+
+### Refactored
+- **`main.rs` dispatcher extraction** — 239-line central match reduced to 12 lines by extracting 9 `dispatch_*` functions (one per command group)
+- **`measure` expression validation** — new `validate_measure_expr` blocks destructive SKILL calls (`system`, `ipcBeginProcess`, `deleteFile`, `load`, `evalstring`, …) before execution
+
 ## [0.1.4] - 2026-04-15
 
 ### Added

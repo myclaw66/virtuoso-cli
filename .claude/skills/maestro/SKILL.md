@@ -11,48 +11,117 @@ allowed-tools: Bash(*/virtuoso *)
 | 窗口标题 | 模式 | 能否修改/运行仿真 |
 |---------|------|------------------|
 | `ADE Explorer Reading: ...` | 只读 | ❌ |
+| `ADE Explorer Editing: ...` | 编辑 | ✅ (IC23+，使用 mae* API) |
 | `ADE Assembler Editing: ...` | 编辑 | ✅ |
 
 ## 快速流程
 
 ```bash
-# 1. 确认窗口模式
-virtuoso skill exec 'hiGetWindowName(hiGetCurrentWindow())'
+# 1. 确认窗口模式（新：直接用 vcli window list）
+vcli window list
+# → [{"name":"Virtuoso® ADE Explorer Editing: FT0001A_SH CMOP_TB maestro ...","mode":"ade-editing"}, ...]
 
-# 2. 获取 session
-virtuoso skill exec 'axlGetWindowSession(hiGetCurrentWindow())'
+# 或旧方式
+vcli skill exec 'hiGetWindowName(hiGetCurrentWindow())'
 
-# 3. 添加输出
-virtuoso skill exec 'maeAddOutput("VOUT" "TEST" ?outputType "net" ?signalName "/VOUT" ?session "fnxSessionX")'
+# 2. 获取 ADE session 名
+vcli skill exec 'axlGetWindowSession(hiGetCurrentWindow())'
+# → "fnxSession3"
 
-# 4. 保存
-virtuoso skill exec 'maeSaveSetup(?lib "LIB" ?cell "CELL" ?view "maestro" ?session "fnxSessionX")'
+# 3. 获取 setup 名（analysis 操作需要它）
+vcli skill exec 'maeGetSetup(?session "fnxSession0")'
+# → ("FT0001A_SH_CMOP_TB_1")
 
-# 5. 运行
-virtuoso skill exec 'maeRunSimulation(?session "fnxSessionX")'
+# 4. 启用 analysis（IC25 实测签名：positional，无 ?session）
+vcli skill exec 'maeSetAnalysis("FT0001A_SH_CMOP_TB_1" "ac")'
+# 支持类型: "ac" | "dc" | "tran" | "noise" | "dcOp"
 
-# 6. 读结果
-virtuoso skill exec 'maeOpenResults(?history "HISTORY_NAME")'
-virtuoso skill exec 'maeGetOverallSpecStatus()'
+# 4b. 也可用 vcli 子命令
+vcli --session <bridge> maestro set-analysis --session fnxSession0 --analysis ac
+
+# 5. 确认 analysis 已添加
+vcli skill exec 'maeGetEnabledAnalysis("FT0001A_SH_CMOP_TB_1")'
+# → ("ac")
+
+# 6. 添加输出
+vcli skill exec 'maeAddOutput("VOUT" "FT0001A_SH_CMOP_TB_1" ?expr "getData(\"/VOUT\")")'
+
+# 7. 保存
+vcli skill exec 'maeSaveSetup(?session "fnxSession0")'
+
+# 8. 运行（需要 Xvfb 已安装）
+vcli skill exec 'maeRunSimulation(?session "fnxSession0")'
+
+# 9. 查看仿真消息/错误
+vcli skill exec 'maeGetSimulationMessages(?session "fnxSession0")'
+
+# 10. 等待完成后导出结果
+vcli skill exec 'maeExportOutputView(?session "fnxSession0" ?fileName "/tmp/results.csv" ?view "Detail")'
 ```
+
+## IC23.1 实测函数签名
+
+> 以下签名在 IC23.1-64b.500 环境下实测验证。IC25 可能有差异。
+
+| 函数 | IC23.1 实测签名 | 注意 |
+|------|----------------|------|
+| `maeGetSessions` | `()` | 无参 |
+| `maeIsValidMaestroSession` | `(sessionName)` | positional |
+| `maeGetSetup` | `(?session sessionName)` | keyword |
+| `maeSetAnalysis` | `(setupName analysisType)` | positional，arg2 是 type 字符串，返回 `t` 成功 |
+| `maeGetEnabledAnalysis` | `(setupName)` | positional，**不接受** `?session` keyword |
+| `maeGetAnalysis` | `(setupName sessionName)` | 两个 positional |
+| `maeRunSimulation` | `(?session sessionName)` | keyword，异步，返回 run 名称如 `"ExplorerRun.0"` |
+| `maeGetSimulationMessages` | `(?session sessionName)` | keyword |
+| `maeGetAllExplorerHistoryNames` | `(sessionName)` | positional，**不接受** `?session` |
+| `maeOpenResults` | `(?history historyName)` | keyword |
+| `maeSaveSetup` | `(?session sessionName)` | keyword |
+| `maeExportOutputView` | `(?session s ?fileName f ?view v)` | keyword |
+| `maeAddOutput` | `(outputName testName ?expr e)` | mixed |
+| `maeSetVar` | `(name value)` | positional，无 session 参数 |
+| `maeGetVar` | `(name)` | positional，无 session 参数 |
+| `maeSetDesign` | `(?session s ?libName l ?cellName c ?viewName v)` | keyword |
 
 ## 常见问题
 
-详见 `references/troubleshooting.md` 和 `references/maestro-skill-api.md`
+### maeGetEnabledAnalysis 在 IC23.1 下签名与 IC25 文档不同
+
+PR #2 按照 IC25.1 文档将其改为 `?session` keyword，但 IC23.1 实际只接受 positional `(setupName)`。
+`get_analyses` 内部已通过 `maeGetSetup` 解析 setup 名规避此问题。
+
+### Xvfb 未安装 (EXPLORER-9512)
+
+```bash
+# Rocky Linux / RHEL / CentOS
+sudo dnf install -y xorg-x11-server-Xvfb
+
+# Ubuntu / Debian
+sudo apt install -y xvfb
+
+# 或设置环境变量指向已有 Xvfb
+export CDS_XVFB_PATH=/path/to/dir/containing/Xvfb
+```
+
+### 没有 analysis (EXPLORER-9059)
+
+```bash
+# 先获取 setup 名
+vcli skill exec 'maeGetSetup(?session "fnxSession0")'
+# 再启用 analysis
+vcli skill exec 'maeSetAnalysis("YOUR_SETUP_NAME" "ac")'
+```
 
 ### 锁文件导致打不开编辑模式
 
 ```bash
-# 删除锁文件
-virtuoso skill exec 'system("rm -f /path/to/library/cell/maestro/maestro.sdb.cdslck")'
+vcli skill exec 'system("rm -f /path/to/library/cell/maestro/maestro.sdb.cdslck")'
 ```
 
 ### 窗口是 Reading 模式
 
 ```bash
-# 关闭后用 "a" 参数重新打开
-virtuoso skill exec 'foreach(w hiGetWindowList() when(rexMatchp("ADE" hiGetWindowName(w)) hiCloseWindow(w)))'
-virtuoso skill exec 'deOpenCellView("LIB" "CELL" "maestro" "maestro" nil "a")'
+vcli skill exec 'foreach(w hiGetWindowList() when(rexMatchp("ADE" hiGetWindowName(w)) hiCloseWindow(w)))'
+vcli skill exec 'deOpenCellView("LIB" "CELL" "maestro" "maestro" nil "a")'
 ```
 
 ### maeAddOutput 成功但 maeGetResultOutputs 返回 nil

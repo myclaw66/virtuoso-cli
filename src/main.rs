@@ -140,6 +140,10 @@ enum Commands {
         verb: Option<String>,
     },
 
+    /// Manage Virtuoso windows and dialogs
+    #[command(subcommand)]
+    Window(WindowCmd),
+
     /// Interactive TUI dashboard
     Tui,
 }
@@ -604,6 +608,15 @@ enum MaestroCmd {
         session: String,
     },
 
+    /// Enable an analysis type on a setup (e.g. ac, dc, tran, noise)
+    SetAnalysis {
+        #[arg(long)]
+        session: String,
+        /// Analysis type: ac | dc | tran | noise | ...
+        #[arg(long)]
+        analysis: String,
+    },
+
     /// Add an output expression
     AddOutput {
         #[arg(long)]
@@ -762,6 +775,32 @@ enum SessionCmd {
     },
 }
 
+#[derive(Subcommand)]
+enum WindowCmd {
+    /// List all open Virtuoso windows with their names and derived mode
+    List,
+
+    /// Dismiss the currently active blocking dialog
+    DismissDialog {
+        /// Action to take: cancel (default) or ok
+        #[arg(long, default_value = "cancel")]
+        action: String,
+        /// Report dialog name without clicking
+        #[arg(long)]
+        dry_run: bool,
+    },
+
+    /// Capture a screenshot of the current Virtuoso window (IC23.1+)
+    Screenshot {
+        /// Output file path (PNG)
+        #[arg(long)]
+        path: String,
+        /// Match window by name pattern (regex); uses current window if omitted
+        #[arg(long)]
+        window: Option<String>,
+    },
+}
+
 fn parse_key_val(s: &str) -> std::result::Result<(String, String), String> {
     let pos = s
         .find('=')
@@ -798,11 +837,19 @@ fn main() {
         None => OutputFormat::resolve(None),
     };
 
-    // Propagate --session (or VB_SESSION env) so VirtuosoClient::from_env() picks it up
+    // Propagate --session so VirtuosoClient::from_env() picks it up.
+    //
+    // Because --session is a clap global arg, it can be captured even when the user
+    // passes it as a subcommand-local arg (e.g. `vcli maestro get-analyses --session fnxSession3`).
+    // To avoid clobbering a bridge session already set via VB_SESSION, we only write
+    // to VB_SESSION when VB_SESSION is not already present in the environment.
+    // Users who want to select the bridge session explicitly should pass `--session`
+    // BEFORE the subcommand name, or set VB_SESSION in the environment.
     let session_from_env = std::env::var("VB_SESSION").ok();
-    let effective_session = cli.session.as_ref().or(session_from_env.as_ref());
-    if let Some(s) = effective_session {
-        std::env::set_var("VB_SESSION", s);
+    if session_from_env.is_none() {
+        if let Some(ref s) = cli.session {
+            std::env::set_var("VB_SESSION", s);
+        }
     }
 
     let is_status_cmd = matches!(&cli.command, Commands::Tunnel(TunnelCmd::Status));
@@ -978,6 +1025,9 @@ fn main() {
                 value,
             } => commands::maestro::set_var(&session, &name, &value),
             MaestroCmd::GetAnalyses { session } => commands::maestro::get_analyses(&session),
+            MaestroCmd::SetAnalysis { session, analysis } => {
+                commands::maestro::set_analysis(&session, &analysis)
+            }
             MaestroCmd::AddOutput {
                 session,
                 name,
@@ -1025,6 +1075,15 @@ fn main() {
         Commands::Session(cmd) => match cmd {
             SessionCmd::List => commands::session::list(format),
             SessionCmd::Show { id } => commands::session::show(&id, format),
+        },
+        Commands::Window(cmd) => match cmd {
+            WindowCmd::List => commands::window::list(),
+            WindowCmd::DismissDialog { action, dry_run } => {
+                commands::window::dismiss_dialog(&action, dry_run)
+            }
+            WindowCmd::Screenshot { path, window } => {
+                commands::window::screenshot(&path, window.as_deref())
+            }
         },
         Commands::Schema { all, noun, verb } => {
             let schema = if all || noun.is_none() {

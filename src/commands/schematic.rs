@@ -262,7 +262,14 @@ pub fn build(spec_path: &str) -> Result<Value> {
                 inst.name, inst.master
             ))
         })?;
-        ed.add_instance(lib, cell, "symbol", &inst.name, (inst.x, inst.y), inst.orient.as_str());
+        ed.add_instance(
+            lib,
+            cell,
+            "symbol",
+            &inst.name,
+            (inst.x, inst.y),
+            inst.orient.as_str(),
+        );
         for (k, v) in &inst.params {
             ed.set_param(&inst.name, k, v);
         }

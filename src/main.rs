@@ -829,9 +829,13 @@ fn dispatch_skill(cmd: SkillCmd) -> error::Result<serde_json::Value> {
 
 fn dispatch_cell(cmd: CellCmd) -> error::Result<serde_json::Value> {
     match cmd {
-        CellCmd::Open { lib, cell, view, mode, dry_run } => {
-            commands::cell::open(&lib, &cell, &view, &mode, dry_run)
-        }
+        CellCmd::Open {
+            lib,
+            cell,
+            view,
+            mode,
+            dry_run,
+        } => commands::cell::open(&lib, &cell, &view, &mode, dry_run),
         CellCmd::Save => commands::cell::save(),
         CellCmd::Close => commands::cell::close(),
         CellCmd::Info => commands::cell::info(),
@@ -840,29 +844,58 @@ fn dispatch_cell(cmd: CellCmd) -> error::Result<serde_json::Value> {
 
 fn dispatch_sim(cmd: SimCmd) -> error::Result<serde_json::Value> {
     match cmd {
-        SimCmd::Setup { lib, cell, view, simulator } => {
-            commands::sim::setup(&lib, &cell, &view, &simulator)
-        }
+        SimCmd::Setup {
+            lib,
+            cell,
+            view,
+            simulator,
+        } => commands::sim::setup(&lib, &cell, &view, &simulator),
         SimCmd::Run {
             analysis,
-            stop, start, from, to, step, dec, errpreset,
-            param, timeout,
+            stop,
+            start,
+            from,
+            to,
+            step,
+            dec,
+            errpreset,
+            param,
+            timeout,
         } => {
-            let mut params: std::collections::HashMap<String, String> =
-                param.into_iter().collect();
-            if let Some(v) = stop    { params.insert("stop".into(), v); }
-            if let Some(v) = start   { params.insert("start".into(), v); }
-            if let Some(v) = from    { params.insert("from".into(), v); }
-            if let Some(v) = to      { params.insert("to".into(), v); }
-            if let Some(v) = step    { params.insert("step".into(), v); }
-            if let Some(v) = dec     { params.insert("dec".into(), v); }
-            if let Some(v) = errpreset { params.insert("errpreset".into(), v); }
+            let mut params: std::collections::HashMap<String, String> = param.into_iter().collect();
+            if let Some(v) = stop {
+                params.insert("stop".into(), v);
+            }
+            if let Some(v) = start {
+                params.insert("start".into(), v);
+            }
+            if let Some(v) = from {
+                params.insert("from".into(), v);
+            }
+            if let Some(v) = to {
+                params.insert("to".into(), v);
+            }
+            if let Some(v) = step {
+                params.insert("step".into(), v);
+            }
+            if let Some(v) = dec {
+                params.insert("dec".into(), v);
+            }
+            if let Some(v) = errpreset {
+                params.insert("errpreset".into(), v);
+            }
             commands::sim::run(&analysis, &params, timeout)
         }
         SimCmd::Measure { expr, analysis } => commands::sim::measure(&analysis, &expr),
-        SimCmd::Sweep { var, from, to, step, measure, analysis, timeout } => {
-            commands::sim::sweep(&var, from, to, step, &analysis, &measure, timeout)
-        }
+        SimCmd::Sweep {
+            var,
+            from,
+            to,
+            step,
+            measure,
+            analysis,
+            timeout,
+        } => commands::sim::sweep(&var, from, to, step, &analysis, &measure, timeout),
         SimCmd::Corner { file, timeout } => commands::sim::corner(&file, timeout),
         SimCmd::Results => commands::sim::results(),
         SimCmd::Netlist { recreate } => commands::sim::netlist(recreate),
@@ -876,28 +909,61 @@ fn dispatch_sim(cmd: SimCmd) -> error::Result<serde_json::Value> {
 fn dispatch_process(cmd: ProcessCmd) -> error::Result<serde_json::Value> {
     match cmd {
         ProcessCmd::Char {
-            lib, cell, view, inst, r#type, l_values,
-            vgs_start, vgs_stop, vgs_step, output, timeout,
-            netlist, model_file, model_section, vdd,
-            nmos_model, pmos_model, inst_name, vds,
+            lib,
+            cell,
+            view,
+            inst,
+            r#type,
+            l_values,
+            vgs_start,
+            vgs_stop,
+            vgs_step,
+            output,
+            timeout,
+            netlist,
+            model_file,
+            model_section,
+            vdd,
+            nmos_model,
+            pmos_model,
+            inst_name,
+            vds,
         } => {
             let l_vals: Vec<f64> = l_values
                 .split(',')
                 .filter_map(|s| s.trim().parse().ok())
                 .collect();
             if netlist {
-                let device_model = if r#type == "pmos" { &pmos_model } else { &nmos_model };
+                let device_model = if r#type == "pmos" {
+                    &pmos_model
+                } else {
+                    &nmos_model
+                };
                 let resolved_inst = inst_name.unwrap_or_else(|| {
-                    if r#type == "pmos" { "PM0".into() } else { "NM0".into() }
+                    if r#type == "pmos" {
+                        "PM0".into()
+                    } else {
+                        "NM0".into()
+                    }
                 });
                 commands::process::char_netlist(
-                    &r#type, &l_vals, vgs_start, vgs_stop, vgs_step,
-                    &output, &model_file, &model_section, vdd, device_model, &resolved_inst, vds,
+                    &r#type,
+                    &l_vals,
+                    vgs_start,
+                    vgs_stop,
+                    vgs_step,
+                    &output,
+                    &model_file,
+                    &model_section,
+                    vdd,
+                    device_model,
+                    &resolved_inst,
+                    vds,
                 )
             } else {
                 commands::process::char(
-                    &lib, &cell, &view, &inst, &r#type, &l_vals,
-                    vgs_start, vgs_stop, vgs_step, &output, timeout,
+                    &lib, &cell, &view, &inst, &r#type, &l_vals, vgs_start, vgs_stop, vgs_step,
+                    &output, timeout,
                 )
             }
         }
@@ -906,9 +972,14 @@ fn dispatch_process(cmd: ProcessCmd) -> error::Result<serde_json::Value> {
 
 fn dispatch_design(cmd: DesignCmd, format: OutputFormat) -> error::Result<serde_json::Value> {
     match cmd {
-        DesignCmd::Size { gmid, l, gm, id, pdk, r#type } => {
-            commands::design::size(gmid, l, gm, id, &pdk, &r#type, format)
-        }
+        DesignCmd::Size {
+            gmid,
+            l,
+            gm,
+            id,
+            pdk,
+            r#type,
+        } => commands::design::size(gmid, l, gm, id, &pdk, &r#type, format),
         DesignCmd::Explore { pdk, r#type } => commands::design::explore(&pdk, &r#type, format),
     }
 }
@@ -918,16 +989,20 @@ fn dispatch_maestro(cmd: MaestroCmd) -> error::Result<serde_json::Value> {
         MaestroCmd::Open { lib, cell, view } => commands::maestro::open(&lib, &cell, &view),
         MaestroCmd::Close { session } => commands::maestro::close(&session),
         MaestroCmd::ListSessions => commands::maestro::list_sessions(),
-        MaestroCmd::SetVar { session, name, value } => {
-            commands::maestro::set_var(&session, &name, &value)
-        }
+        MaestroCmd::SetVar {
+            session,
+            name,
+            value,
+        } => commands::maestro::set_var(&session, &name, &value),
         MaestroCmd::GetAnalyses { session } => commands::maestro::get_analyses(&session),
         MaestroCmd::SetAnalysis { session, analysis } => {
             commands::maestro::set_analysis(&session, &analysis)
         }
-        MaestroCmd::AddOutput { session, name, expr } => {
-            commands::maestro::add_output(&session, &name, &expr)
-        }
+        MaestroCmd::AddOutput {
+            session,
+            name,
+            expr,
+        } => commands::maestro::add_output(&session, &name, &expr),
         MaestroCmd::Run { session } => commands::maestro::run(&session),
         MaestroCmd::Save { session } => commands::maestro::save(&session),
         MaestroCmd::Export { session, path } => commands::maestro::export(&session, &path),
@@ -937,7 +1012,14 @@ fn dispatch_maestro(cmd: MaestroCmd) -> error::Result<serde_json::Value> {
 fn dispatch_schematic(cmd: SchematicCmd) -> error::Result<serde_json::Value> {
     match cmd {
         SchematicCmd::Open { lib, cell, view } => commands::schematic::open(&lib, &cell, &view),
-        SchematicCmd::Place { master, name, x, y, orient, params } => {
+        SchematicCmd::Place {
+            master,
+            name,
+            x,
+            y,
+            orient,
+            params,
+        } => {
             let param_pairs: Vec<(String, String)> = params
                 .unwrap_or_default()
                 .split(',')

@@ -130,19 +130,25 @@ impl SchematicOps {
     /// List all instances in the open cellview. Returns JSON array via sprintf.
     pub fn list_instances(&self) -> String {
         let guard = cv_guard();
-        format!(r#"let((cv out sep lib cell) {guard} cv = RB_SCH_CV out = "[" sep = "" foreach(inst cv~>instances lib = if(inst~>master inst~>master~>libName "?") cell = if(inst~>master inst~>master~>cellName "?") out = strcat(out sep sprintf(nil "{{\"name\":\"%s\",\"master\":\"%s/%s\",\"x\":%g,\"y\":%g}}" inst~>name lib cell car(inst~>xy) cadr(inst~>xy))) sep = ",") strcat(out "]"))"#)
+        format!(
+            r#"let((cv out sep lib cell) {guard} cv = RB_SCH_CV out = "[" sep = "" foreach(inst cv~>instances lib = if(inst~>master inst~>master~>libName "?") cell = if(inst~>master inst~>master~>cellName "?") out = strcat(out sep sprintf(nil "{{\"name\":\"%s\",\"master\":\"%s/%s\",\"x\":%g,\"y\":%g}}" inst~>name lib cell car(inst~>xy) cadr(inst~>xy))) sep = ",") strcat(out "]"))"#
+        )
     }
 
     /// List all nets in the open cellview. Returns JSON array.
     pub fn list_nets(&self) -> String {
         let guard = cv_guard();
-        format!(r#"let((cv out sep) {guard} cv = RB_SCH_CV out = "[" sep = "" foreach(net cv~>nets out = strcat(out sep sprintf(nil "\"%s\"" net~>name)) sep = ",") strcat(out "]"))"#)
+        format!(
+            r#"let((cv out sep) {guard} cv = RB_SCH_CV out = "[" sep = "" foreach(net cv~>nets out = strcat(out sep sprintf(nil "\"%s\"" net~>name)) sep = ",") strcat(out "]"))"#
+        )
     }
 
     /// List all pins (terminals) in the open cellview. Returns JSON array.
     pub fn list_pins(&self) -> String {
         let guard = cv_guard();
-        format!(r#"let((cv out sep) {guard} cv = RB_SCH_CV out = "[" sep = "" foreach(term cv~>terminals out = strcat(out sep sprintf(nil "{{\"name\":\"%s\",\"direction\":\"%s\"}}" term~>name term~>direction)) sep = ",") strcat(out "]"))"#)
+        format!(
+            r#"let((cv out sep) {guard} cv = RB_SCH_CV out = "[" sep = "" foreach(term cv~>terminals out = strcat(out sep sprintf(nil "{{\"name\":\"%s\",\"direction\":\"%s\"}}" term~>name term~>direction)) sep = ",") strcat(out "]"))"#
+        )
     }
 
     /// Get parameters of a specific instance. Returns JSON object.
@@ -179,7 +185,10 @@ mod tests {
     fn create_instance_uses_orient() {
         let s = ops().create_instance("analogLib", "nmos4", "symbol", "M1", (100, 200), "MY");
         assert!(s.contains("\"MY\""), "orient must be in SKILL: {s}");
-        assert!(s.contains("100") && s.contains("200"), "origin must be in SKILL: {s}");
+        assert!(
+            s.contains("100") && s.contains("200"),
+            "origin must be in SKILL: {s}"
+        );
         assert!(s.contains("\"M1\""), "instance name must be quoted: {s}");
     }
 
@@ -193,8 +202,14 @@ mod tests {
     fn assign_net_uses_dbconnect() {
         let s = ops().assign_net("M1", "G", "VIN");
         assert!(s.contains("dbConnectToNet"), "must use dbConnectToNet: {s}");
-        assert!(!s.contains("schCreateWire"), "must not use schCreateWire: {s}");
-        assert!(!s.contains("0 0"), "hardcoded coordinates must be gone: {s}");
+        assert!(
+            !s.contains("schCreateWire"),
+            "must not use schCreateWire: {s}"
+        );
+        assert!(
+            !s.contains("0 0"),
+            "hardcoded coordinates must be gone: {s}"
+        );
     }
 
     #[test]

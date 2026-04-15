@@ -43,7 +43,10 @@ mod tests {
     fn create_instance_orientation() {
         let s = ops().create_instance("tsmc", "nmos", "layout", (10, 20), "MY");
         assert!(s.contains("\"MY\""), "orient must appear: {s}");
-        assert!(s.contains("10:20") || s.contains("10 20"), "origin must appear: {s}");
+        assert!(
+            s.contains("10:20") || s.contains("10 20"),
+            "origin must appear: {s}"
+        );
     }
 }
 
@@ -61,7 +64,9 @@ impl LayoutOps {
         let layer = escape_skill_string(layer);
         let purpose = escape_skill_string(purpose);
         let ((x1, y1), (x2, y2)) = (bbox[0], bbox[1]);
-        format!(r#"rodCreateRect(?layer "{layer}" ?purpose "{purpose}" ?bBox (({x1} {y1}) ({x2} {y2})))"#)
+        format!(
+            r#"rodCreateRect(?layer "{layer}" ?purpose "{purpose}" ?bBox (({x1} {y1}) ({x2} {y2})))"#
+        )
     }
 
     pub fn create_polygon(&self, layer: &str, purpose: &str, points: &[(i64, i64)]) -> String {

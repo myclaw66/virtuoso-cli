@@ -271,7 +271,10 @@ mod tests {
     #[test]
     fn setup_skill_format() {
         let s = setup_skill("myLib", "myCell", "schematic", "spectre");
-        assert!(s.contains("design(\"myLib\" \"myCell\" \"schematic\")"), "{s}");
+        assert!(
+            s.contains("design(\"myLib\" \"myCell\" \"schematic\")"),
+            "{s}"
+        );
         assert!(s.contains("spectre"), "{s}");
         assert!(s.ends_with("resultsDir()"), "{s}");
     }

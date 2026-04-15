@@ -387,7 +387,10 @@ mod tests {
             "ymax(getData(\"id\"))",
             "delay(getData(\"vout\") 0.5)",
         ] {
-            assert!(validate_measure_expr(expr).is_ok(), "should be allowed: {expr}");
+            assert!(
+                validate_measure_expr(expr).is_ok(),
+                "should be allowed: {expr}"
+            );
         }
     }
 

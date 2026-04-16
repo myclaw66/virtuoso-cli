@@ -1,4 +1,4 @@
-use crate::client::bridge::VirtuosoClient;
+use crate::client::bridge::{escape_skill_string, VirtuosoClient};
 use crate::error::{Result, VirtuosoError};
 use crate::ocean;
 use crate::ocean::corner::CornerConfig;
@@ -316,6 +316,68 @@ pub fn results() -> Result<Value> {
     }))
 }
 
+/// Run createNetlist, auto-recovering from OSSHNL-109 ("modified since last extraction").
+///
+/// When a schematic is edited via SKILL (e.g. `dbSave`) without going through
+/// Check & Save, Cadence marks its extraction timestamp as stale and
+/// `createNetlist` returns nil.  We detect this by retrying after
+/// `schCheck(cv)` + `dbSave(cv)`.
+fn create_netlist_inner(
+    client: &VirtuosoClient,
+    lib: &str,
+    cell: &str,
+    view: &str,
+    recreate: bool,
+) -> Result<String> {
+    let cmd = if recreate {
+        "createNetlist(?recreateAll t ?display nil)"
+    } else {
+        "createNetlist(?display nil)"
+    };
+
+    // First attempt
+    let nr = client.execute_skill(cmd, Some(60))?;
+    let nr_out = nr.output.trim().trim_matches('"').to_string();
+    if nr.skill_ok() {
+        return Ok(nr_out);
+    }
+
+    // Auto-fix OSSHNL-109: run schCheck + dbSave to refresh extraction timestamp.
+    // Try to open the cv in write mode; fall back to the already-open write-mode cv
+    // (dbOpenCellViewByType returns nil if the cv is already held in "a" mode by Ocean).
+    let lib_e = escape_skill_string(lib);
+    let cell_e = escape_skill_string(cell);
+    let view_e = escape_skill_string(view);
+    let fix = format!(
+        r#"let((cv chk) cv=dbOpenCellViewByType("{lib_e}" "{cell_e}" "{view_e}") unless(cv cv=car(setof(ocv dbGetOpenCellViews() and(ocv~>libName=="{lib_e}" ocv~>cellName=="{cell_e}" ocv~>viewName=="{view_e}" ocv~>mode=="a")))) if(cv progn(chk=schCheck(cv) when(car(chk)==0 dbSave(cv)) list(car(chk))) list(-1)))"#
+    );
+    let fix_r = client.execute_skill(&fix, None)?;
+
+    // schCheck returns (errorCount warningCount); we wrapped it in list() → "(N)"
+    let raw = fix_r.output.trim().trim_start_matches('(').trim_end_matches(')');
+    let err_count: i64 =
+        raw.split_whitespace().next().and_then(|s| s.parse().ok()).unwrap_or(-1);
+
+    if err_count != 0 {
+        return Err(VirtuosoError::Execution(format!(
+            "createNetlist failed; schematic has {err_count} check error(s) (OSSHNL-109). \
+             Fix schematic connectivity errors before netlisting."
+        )));
+    }
+
+    // Retry after Check and Save
+    let retry = client.execute_skill(cmd, Some(60))?;
+    let retry_out = retry.output.trim().trim_matches('"').to_string();
+    if !retry.skill_ok() {
+        let errs = if retry.errors.is_empty() { "none".into() } else { retry.errors.join("; ") };
+        return Err(VirtuosoError::Execution(format!(
+            "createNetlist returned nil after Check and Save. Errors: {errs}. \
+             Ensure the schematic is saved and PDK models are loaded."
+        )));
+    }
+    Ok(retry_out)
+}
+
 pub fn netlist(lib: &str, cell: &str, view: &str, recreate: bool) -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
 
@@ -332,22 +394,8 @@ pub fn netlist(lib: &str, cell: &str, view: &str, recreate: bool) -> Result<Valu
         )));
     }
 
-    // Step 2: createNetlist — returns the netlist file path on success, nil on failure.
-    let create_cmd = if recreate {
-        "createNetlist(?recreateAll t ?display nil)"
-    } else {
-        "createNetlist(?display nil)"
-    };
-    let nr = client.execute_skill(create_cmd, Some(60))?;
-    let nr_out = nr.output.trim().trim_matches('"').to_string();
-
-    if !nr.skill_ok() {
-        let errs = if nr.errors.is_empty() { "none".into() } else { nr.errors.join("; ") };
-        return Err(VirtuosoError::Execution(format!(
-            "createNetlist returned nil. Errors: {errs}. \
-             Ensure the schematic is saved and the PDK models are loaded."
-        )));
-    }
+    // Step 2: createNetlist — auto-recovers from OSSHNL-109 via schCheck+dbSave.
+    let nr_out = create_netlist_inner(&client, lib, cell, view, recreate)?;
 
     // Step 3: Resolve the actual netlist path.
     // createNetlist returns either:

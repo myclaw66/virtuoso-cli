@@ -354,9 +354,16 @@ fn create_netlist_inner(
     let fix_r = client.execute_skill(&fix, None)?;
 
     // schCheck returns (errorCount warningCount); we wrapped it in list() → "(N)"
-    let raw = fix_r.output.trim().trim_start_matches('(').trim_end_matches(')');
-    let err_count: i64 =
-        raw.split_whitespace().next().and_then(|s| s.parse().ok()).unwrap_or(-1);
+    let raw = fix_r
+        .output
+        .trim()
+        .trim_start_matches('(')
+        .trim_end_matches(')');
+    let err_count: i64 = raw
+        .split_whitespace()
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(-1);
 
     if err_count != 0 {
         return Err(VirtuosoError::Execution(format!(
@@ -369,7 +376,11 @@ fn create_netlist_inner(
     let retry = client.execute_skill(cmd, Some(60))?;
     let retry_out = retry.output.trim().trim_matches('"').to_string();
     if !retry.skill_ok() {
-        let errs = if retry.errors.is_empty() { "none".into() } else { retry.errors.join("; ") };
+        let errs = if retry.errors.is_empty() {
+            "none".into()
+        } else {
+            retry.errors.join("; ")
+        };
         return Err(VirtuosoError::Execution(format!(
             "createNetlist returned nil after Check and Save. Errors: {errs}. \
              Ensure the schematic is saved and PDK models are loaded."

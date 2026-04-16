@@ -77,6 +77,38 @@ Skills 也会被自动触发。如果用户描述匹配某 skill 的 description
 - **Build / test** → `Cargo.toml`（`cargo build`、`cargo test`、`cargo clippy`）
 - **PDK 参数默认值** → 对应 skill 文档，**不进** binary
 
+## 主程序 vs Skill 的归属原则
+
+**一句话**：主程序做原子操作，Skill 做流程编排。
+
+### 固化进主程序（binary）
+
+当满足以下任一条件时：
+
+- **有确定的成功/失败语义**：调用后要检查 `skill_ok()`，失败要返回 `VirtuosoError` 和 exit code
+- **状态需要跨调用持久化**：job 系统（UUID 文件）、session 路由、bridge 连接
+- **安全边界**：所有进入 SKILL 的用户输入必须经 `escape_skill_string()`——这不能依赖 skill 的"记忆"
+- **批量/性能敏感**：sweep 100 点 = 100 × bridge RTT，不能再叠加 skill 解析开销
+- **确定性恢复**：OSSHNL-109 这类"检测到 X → 执行固定修复 → 重试"的逻辑，恢复步骤是确定的
+
+### 写成 Skill
+
+当满足以下任一条件时：
+
+- **流程知识**：`sim setup → run → measure` 的顺序、参数映射、何时该调/不该调，属于"如何用工具"
+- **PDK / 工艺相关**：SMIC 参数、CDF 链、model section 名等经常变，不进 binary
+- **设计方法论**：gm/Id 方法、拓扑选择、规格分解——这是知识，不是命令
+- **诊断推理**：根因有多种可能时（run() 返回 nil 的 4 种根因），用 skill 的分支逻辑比 match 更自然
+- **Maestro/ADE 版本差异**：IC23 vs IC25 API 变化大，用 skill 隔离
+
+### 灰色地带的裁决
+
+| 场景 | 裁决 |
+|------|------|
+| 原理图拓扑生成 | 原子操作（create-inst 等）进主程序，拓扑级编排留 skill |
+| `sim setup` 调用时机 | 命令本身在主程序，"何时该调"的判断逻辑留 skill |
+| 复杂错误诊断 | 确定性修复进主程序，多路径推理留 skill（ocean-netlist-regen） |
+
 ## 添加新命令（项目特定工作流）
 
 1. **先定义 JSON 输出结构** — 问清楚：输出什么？中间状态？结构对了实现自然流畅

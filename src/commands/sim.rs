@@ -376,9 +376,7 @@ fn create_netlist_inner(
         //       confusing "file not found" error downstream.
         //
         // Distinguish by checking ddGetLibList() for the library name.
-        let lib_probe = format!(
-            r#"when(car(setof(l ddGetLibList() l~>name=="{lib_e}")) "found")"#
-        );
+        let lib_probe = format!(r#"when(car(setof(l ddGetLibList() l~>name=="{lib_e}")) "found")"#);
         let probe_r = client.execute_skill(&lib_probe, None)?;
         let lib_found = probe_r.output.trim().trim_matches('"');
         if lib_found != "found" {
@@ -436,7 +434,13 @@ fn analysis_block(kind: &str) -> Option<&'static str> {
     }
 }
 
-pub fn netlist(lib: &str, cell: &str, view: &str, recreate: bool, analyses: &[String]) -> Result<Value> {
+pub fn netlist(
+    lib: &str,
+    cell: &str,
+    view: &str,
+    recreate: bool,
+    analyses: &[String],
+) -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
 
     // Step 1: Establish Ocean session (simulator + design) so createNetlist has
@@ -470,12 +474,13 @@ pub fn netlist(lib: &str, cell: &str, view: &str, recreate: bool, analyses: &[St
         // If resultsDir is relative, prepend getWorkingDir() to make it absolute.
         let rdir_val = {
             let from_setup = sr.output.trim().trim_matches('"');
-            let raw = if from_setup != "nil" && !from_setup.is_empty() && from_setup.starts_with('/') {
-                from_setup.to_string()
-            } else {
-                let rdir = client.execute_skill("resultsDir()", None)?;
-                rdir.output.trim().trim_matches('"').to_string()
-            };
+            let raw =
+                if from_setup != "nil" && !from_setup.is_empty() && from_setup.starts_with('/') {
+                    from_setup.to_string()
+                } else {
+                    let rdir = client.execute_skill("resultsDir()", None)?;
+                    rdir.output.trim().trim_matches('"').to_string()
+                };
             if raw != "nil" && !raw.is_empty() && !raw.starts_with('/') {
                 // Relative path — prepend Ocean's working directory
                 let cwd_r = client.execute_skill("getWorkingDir()", None)?;

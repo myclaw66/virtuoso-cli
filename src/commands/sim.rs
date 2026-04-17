@@ -365,6 +365,12 @@ fn create_netlist_inner(
         .and_then(|s| s.parse().ok())
         .unwrap_or(-1);
 
+    if err_count == -1 {
+        // cv not openable (no ADE window open); schCheck cannot run.
+        // createNetlist may have written the file anyway — return "t" so the
+        // caller resolves via resultsDir() and verifies the file exists.
+        return Ok("t".into());
+    }
     if err_count != 0 {
         return Err(VirtuosoError::Execution(format!(
             "createNetlist failed; schematic has {err_count} check error(s) (OSSHNL-109). \
@@ -389,7 +395,21 @@ fn create_netlist_inner(
     Ok(retry_out)
 }
 
-pub fn netlist(lib: &str, cell: &str, view: &str, recreate: bool) -> Result<Value> {
+/// Standard analysis blocks for standalone Spectre invocation.
+/// Returns `None` for unrecognised kinds so callers can warn.
+fn analysis_block(kind: &str) -> Option<&'static str> {
+    match kind {
+        "dc" => Some(
+            "dcOp dc write=\"spectre.dc\" maxiters=150 maxsteps=10000 annotate=status\n\
+             dcOpInfo info what=oppoint where=rawfile\n",
+        ),
+        "ac" => Some("acSweep ac start=1 stop=10G dec=20 annotate=status\n"),
+        "tran" => Some("tran tran stop=10u annotate=status\n"),
+        _ => None,
+    }
+}
+
+pub fn netlist(lib: &str, cell: &str, view: &str, recreate: bool, analyses: &[String]) -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
 
     // Step 1: Establish Ocean session (simulator + design) so createNetlist has
@@ -452,10 +472,60 @@ pub fn netlist(lib: &str, cell: &str, view: &str, recreate: bool) -> Result<Valu
         )));
     }
 
-    Ok(json!({
+    // Step 5: Post-process the netlist for standalone Spectre invocation.
+    let mut patched = false;
+    let mut unknown_analyses: Vec<&str> = Vec::new();
+
+    if !analyses.is_empty() {
+        let mut content = std::fs::read_to_string(&candidate).map_err(|e| {
+            VirtuosoError::Execution(format!("cannot read netlist '{candidate}': {e}"))
+        })?;
+
+        // Fix ADE OA-relative model path (only resolves with +adespetkn token).
+        // Pattern: /oa/smic13mmrf_1233//../  →  /  (removes the indirection)
+        if content.contains("/oa/smic13mmrf_1233//../") {
+            content = content.replace("/oa/smic13mmrf_1233//../", "/");
+            patched = true;
+        }
+
+        // Append missing analysis blocks (skip if already present).
+        for kind in analyses {
+            match analysis_block(kind) {
+                Some(block) => {
+                    let marker = match kind.as_str() {
+                        "dc" => "dcOp ",
+                        "ac" => "acSweep ",
+                        "tran" => "tran tran",
+                        _ => unreachable!(),
+                    };
+                    if !content.contains(marker) {
+                        content.push('\n');
+                        content.push_str(block);
+                        patched = true;
+                    }
+                }
+                None => unknown_analyses.push(kind),
+            }
+        }
+
+        if patched {
+            std::fs::write(&candidate, &content).map_err(|e| {
+                VirtuosoError::Execution(format!("cannot write patched netlist '{candidate}': {e}"))
+            })?;
+        }
+    }
+
+    let mut out = json!({
         "status": "success",
         "netlist_path": candidate,
-    }))
+    });
+    if patched {
+        out["patched"] = json!(true);
+    }
+    if !unknown_analyses.is_empty() {
+        out["unknown_analyses"] = json!(unknown_analyses);
+    }
+    Ok(out)
 }
 
 // ── Async job commands ──────────────────────────────────────────────

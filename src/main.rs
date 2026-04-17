@@ -441,6 +441,12 @@ enum SimCmd {
         /// Force full netlist recreation (clears stale cache)
         #[arg(long)]
         recreate: bool,
+
+        /// Append analysis block(s) for standalone Spectre (dc, ac, tran).
+        /// Also auto-fixes ADE OA-relative model paths (SFE-868).
+        /// Can be specified multiple times: --with-analysis dc --with-analysis ac
+        #[arg(long = "with-analysis", value_name = "TYPE")]
+        with_analysis: Vec<String>,
     },
 
     /// Launch simulation asynchronously (returns job ID)
@@ -916,7 +922,8 @@ fn dispatch_sim(cmd: SimCmd) -> error::Result<serde_json::Value> {
             cell,
             view,
             recreate,
-        } => commands::sim::netlist(&lib, &cell, &view, recreate),
+            with_analysis,
+        } => commands::sim::netlist(&lib, &cell, &view, recreate, &with_analysis),
         SimCmd::RunAsync { netlist } => commands::sim::run_async(&netlist),
         SimCmd::JobStatus { id } => commands::sim::job_status(&id),
         SimCmd::JobList => commands::sim::job_list(),

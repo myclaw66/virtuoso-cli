@@ -128,88 +128,104 @@ impl VirtuosoClient {
         let addr: std::net::SocketAddr = format!("{}:{}", self.host, self.port)
             .parse()
             .map_err(|e| VirtuosoError::Connection(format!("invalid address: {e}")))?;
-        let mut stream = TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(timeout))
-            .map_err(|e| VirtuosoError::Connection(e.to_string()))?;
-        stream
-            .set_read_timeout(Some(std::time::Duration::from_secs(timeout)))
-            .ok();
-
-        let req = serde_json::json!({
-            "skill": skill_code,
-            "timeout": timeout
-        });
+        let req = serde_json::json!({"skill": skill_code, "timeout": timeout});
         let req_bytes = serde_json::to_string(&req).map_err(VirtuosoError::Json)?;
-        stream
-            .write_all(req_bytes.as_bytes())
-            .map_err(|e| VirtuosoError::Connection(e.to_string()))?;
-        stream
-            .shutdown(std::net::Shutdown::Write)
-            .map_err(|e| VirtuosoError::Connection(e.to_string()))?;
 
-        let mut data = Vec::new();
-        let mut buf = [0u8; 65536];
-        loop {
-            match stream.read(&mut buf) {
-                Ok(0) => break,
-                Ok(n) => {
-                    if data.len() + n > MAX_RESPONSE_SIZE {
-                        return Err(VirtuosoError::Execution(format!(
-                            "response exceeds {}MB limit",
-                            MAX_RESPONSE_SIZE / 1024 / 1024
-                        )));
+        // Drain loop: a new session may find stale "sync_N" responses queued in the
+        // daemon from a previous client. Detect and transparently discard up to 10.
+        for drain in 0..=10u8 {
+            let mut stream =
+                TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(timeout))
+                    .map_err(|e| VirtuosoError::Connection(e.to_string()))?;
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(timeout)))
+                .ok();
+            stream
+                .write_all(req_bytes.as_bytes())
+                .map_err(|e| VirtuosoError::Connection(e.to_string()))?;
+            stream
+                .shutdown(std::net::Shutdown::Write)
+                .map_err(|e| VirtuosoError::Connection(e.to_string()))?;
+
+            let mut data = Vec::new();
+            let mut buf = [0u8; 65536];
+            loop {
+                match stream.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if data.len() + n > MAX_RESPONSE_SIZE {
+                            return Err(VirtuosoError::Execution(format!(
+                                "response exceeds {}MB limit",
+                                MAX_RESPONSE_SIZE / 1024 / 1024
+                            )));
+                        }
+                        data.extend_from_slice(&buf[..n]);
                     }
-                    data.extend_from_slice(&buf[..n]);
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        return Err(VirtuosoError::Timeout(timeout));
+                    }
+                    Err(e) => return Err(VirtuosoError::Connection(e.to_string())),
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    return Err(VirtuosoError::Timeout(timeout));
-                }
-                Err(e) => return Err(VirtuosoError::Connection(e.to_string())),
             }
+
+            if data.is_empty() {
+                return Err(VirtuosoError::Execution(
+                    "empty response from daemon".into(),
+                ));
+            }
+
+            let status_byte = data[0];
+            let payload = String::from_utf8_lossy(&data[1..]).to_string();
+
+            // Stale sync_N: queued response from a previous session's command.
+            // Discard and retry with the same command on a fresh connection.
+            if status_byte == STX && is_stale_sync(&payload) {
+                continue;
+            }
+
+            if drain == 10 {
+                return Err(VirtuosoError::Execution(
+                    "bridge queue misaligned: 10 consecutive sync_N responses drained".into(),
+                ));
+            }
+
+            let elapsed = start.elapsed().as_secs_f64();
+            let mut result = VirtuosoResult {
+                status: ExecutionStatus::Success,
+                output: String::new(),
+                errors: Vec::new(),
+                warnings: Vec::new(),
+                execution_time: Some(elapsed),
+                metadata: Default::default(),
+            };
+
+            // STX = transport success; NAK = transport error (includes daemon timeout).
+            // The daemon sends NAK+"TimeoutError"+RS on deadline — no need to text-match
+            // under STX. Doing so would reject any SKILL function that legitimately
+            // returns the string "TimeoutError".
+            if status_byte == STX {
+                result.output = payload;
+            } else if status_byte == NAK {
+                result.status = ExecutionStatus::Error;
+                result.errors.push(payload);
+            } else {
+                result.output = String::from_utf8_lossy(&data).to_string();
+                result.warnings.push("non-standard response marker".into());
+            }
+
+            // Log command execution
+            let truncated = if skill_code.len() > 200 {
+                format!("{}...", &skill_code[..200])
+            } else {
+                skill_code.to_string()
+            };
+            crate::command_log::log_command("SKILL", &truncated, Some(start.elapsed().as_millis()));
+
+            return Ok(result);
         }
 
-        let elapsed = start.elapsed().as_secs_f64();
-
-        if data.is_empty() {
-            return Err(VirtuosoError::Execution(
-                "empty response from daemon".into(),
-            ));
-        }
-
-        let status_byte = data[0];
-        let payload = String::from_utf8_lossy(&data[1..]).to_string();
-
-        let mut result = VirtuosoResult {
-            status: ExecutionStatus::Success,
-            output: String::new(),
-            errors: Vec::new(),
-            warnings: Vec::new(),
-            execution_time: Some(elapsed),
-            metadata: Default::default(),
-        };
-
-        // STX = transport success; NAK = transport error (includes daemon timeout).
-        // The daemon sends NAK+"TimeoutError"+RS on deadline — no need to text-match
-        // under STX. Doing so would reject any SKILL function that legitimately
-        // returns the string "TimeoutError".
-        if status_byte == STX {
-            result.output = payload;
-        } else if status_byte == NAK {
-            result.status = ExecutionStatus::Error;
-            result.errors.push(payload);
-        } else {
-            result.output = String::from_utf8_lossy(&data).to_string();
-            result.warnings.push("non-standard response marker".into());
-        }
-
-        // Log command execution
-        let truncated = if skill_code.len() > 200 {
-            format!("{}...", &skill_code[..200])
-        } else {
-            skill_code.to_string()
-        };
-        crate::command_log::log_command("SKILL", &truncated, Some(start.elapsed().as_millis()));
-
-        Ok(result)
+        // Unreachable: the loop always returns or continues; drain == 10 returns Err above.
+        unreachable!()
     }
 
     pub fn test_connection(&self, timeout: Option<u64>) -> Result<bool> {
@@ -338,6 +354,12 @@ fn check_blocking_skill(code: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Returns true for stale `"sync_N"` responses queued from a previous session.
+fn is_stale_sync(payload: &str) -> bool {
+    let p = payload.trim().trim_matches('"');
+    p.starts_with("sync_") && p[5..].parse::<u32>().is_ok()
 }
 
 pub fn escape_skill_string(s: &str) -> String {

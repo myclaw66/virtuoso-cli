@@ -147,19 +147,10 @@ grep "Working Directory" ~/CDS.log
 # Wrong:    meowu:/home/meow/git/virtuoso-cli
 ```
 
-**Fix A (permanent)**: Start Virtuoso from the project directory:
+**Fix**: Start Virtuoso from the project directory:
 ```bash
 cd /home/meow/projects/ft0001 && virtuoso &
 ```
-
-**Fix B (runtime)**: Write a `cds.lib` in Virtuoso's CWD, then call from the CIW (**NOT via bridge**):
-```skill
-; In Virtuoso CIW only — calling via bridge crashes the daemon (spawns UI dialog)
-hiLoadCDSLibDefs("/home/meow/git/virtuoso-cli/cds.lib")
-```
-
-**⚠️ Never call `hiLoadCDSLibDefs` via `vcli skill exec`** — it spawns a UI dialog,
-killing the bridge ipc subprocess. Restart bridge after: Ctrl+C in CIW, reload bridge.il + RBStart.
 
 **Distinguish from OSSHNL-109** (both produce `err_count == -1` in vcli):
 ```skill

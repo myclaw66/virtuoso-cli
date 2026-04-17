@@ -38,29 +38,12 @@ In `create_netlist_inner` (sim.rs), when `err_count == -1`, this probe distingui
 - `"found"` → OSSHNL-109 (cv held in "a" mode) → return `Ok("t")` and let caller verify
 - anything else → library not registered → return `Err` with actionable message
 
-### Fix A: Correct Startup Directory (permanent)
+### Fix: Correct Startup Directory
 Start Virtuoso from the project directory whose `cds.lib` includes the library:
 ```bash
 cd /home/meow/projects/ft0001
 virtuoso &
 ```
-
-### Fix B: Runtime cds.lib Registration (workaround for wrong CWD)
-Write a `cds.lib` in the directory Virtuoso was started from, then call from the CIW:
-```
-; cds.lib in /home/meow/git/virtuoso-cli:
-SOFTINCLUDE /home/meow/projects/ft0001/cds.lib.local
-```
-Then in Virtuoso CIW (NOT via bridge — see below):
-```skill
-hiLoadCDSLibDefs("/home/meow/git/virtuoso-cli/cds.lib")
-```
-
-### Critical: hiLoadCDSLibDefs MUST be called from CIW, NOT via bridge
-`hiLoadCDSLibDefs()` spawns a UI dialog. Calling it through the TCP bridge causes the ipc
-subprocess to die, crashing the daemon. The bridge port becomes unavailable and must be restarted.
-
-**Never call `hiLoadCDSLibDefs` via `vcli skill exec`.**
 
 ### vcli Error Message (after the ddGetLibList probe)
 ```

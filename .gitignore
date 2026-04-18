@@ -16,3 +16,5 @@ libManager.log
 # Spectre simulation artifacts
 input.ahdlSimDB/
 spectre.dc
+*.pyc
+__pycache__/

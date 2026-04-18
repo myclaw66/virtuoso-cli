@@ -9,6 +9,7 @@ mod exit_codes;
 mod models;
 mod ocean;
 mod output;
+mod spec;
 mod spectre;
 mod transport;
 mod tui;

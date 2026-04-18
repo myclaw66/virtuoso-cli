@@ -66,13 +66,18 @@ pub fn run(spec_file: &str, netlist_file: &str, max_iter: u32, timeout: u64) -> 
 
     let combos = spec.param_combos();
     if combos.is_empty() {
-        return Err(VirtuosoError::Config("spec produces no parameter combinations".into()));
+        return Err(VirtuosoError::Config(
+            "spec produces no parameter combinations".into(),
+        ));
     }
 
     let optim_id = format!("bg-{}", &uuid::Uuid::new_v4().to_string()[..6]);
     let jobs = run_batch(&template, combos, timeout)?;
 
-    let completed = jobs.iter().filter(|j| j.status == JobStatus::Completed).count();
+    let completed = jobs
+        .iter()
+        .filter(|j| j.status == JobStatus::Completed)
+        .count();
     let failed = jobs.len() - completed;
     let status = if failed == 0 {
         "completed"
@@ -123,7 +128,11 @@ pub fn run(spec_file: &str, netlist_file: &str, max_iter: u32, timeout: u64) -> 
 
 pub fn status(optim_id: &str) -> Result<Value> {
     let state = OptimState::load(optim_id)?;
-    let completed = state.jobs.iter().filter(|j| j.status == JobStatus::Completed).count();
+    let completed = state
+        .jobs
+        .iter()
+        .filter(|j| j.status == JobStatus::Completed)
+        .count();
     let failed = state.jobs.len() - completed;
     Ok(serde_json::json!({
         "optim_id": optim_id,

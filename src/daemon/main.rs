@@ -19,9 +19,6 @@ fn main() {
         process::exit(1);
     });
 
-    // cb_port mirrors RBCallbackPort in ramic_bridge.il (RBPort + 1)
-    let cb_port = port + 1;
-
     let listener = TcpListener::bind(format!("{host}:{port}")).unwrap_or_else(|e| {
         eprintln!("failed to bind {host}:{port}: {e}");
         process::exit(1);
@@ -31,6 +28,10 @@ fn main() {
     // Print actual port so bridge.il can read it (important when port=0 was passed)
     eprintln!("PORT:{actual_port}");
     eprintln!("[virtuoso-daemon] listening on {host}:{actual_port}");
+
+    // cb_port mirrors RBCallbackPort in ramic_bridge.il (RBPort + 1).
+    // Must use actual_port, not the argv port (which may be 0 for OS-assigned).
+    let cb_port = actual_port + 1;
 
     for stream in listener.incoming() {
         match stream {

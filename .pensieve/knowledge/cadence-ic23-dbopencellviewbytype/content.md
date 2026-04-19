@@ -69,11 +69,38 @@ mapcar(lambda(cv list(cv~>libName cv~>cellName cv~>viewName cv~>mode))
 
 `dbSave(cv)` on a cv opened with the 3-arg form (or retrieved from `dbGetOpenCellViews()`) works correctly. `dbSave` requires the cv to be in "a" mode — read-mode cv handles cannot be saved.
 
+### Safe Read-Only Form (for Exploration via Bridge)
+
+```skill
+; nil viewType + "r" mode — opens existing cv read-only ✅
+cv = dbOpenCellViewByType("LIB" "CELL" "schematic" nil "r")
+```
+
+Using `nil` as the viewType bypasses the OA-type lookup; `"r"` prevents any on-disk write.
+Verified working in IC23.1 for SKILL bridge calls that only inspect instances/nets/terminals.
+
+### ⚠️ Write-Mode Danger via Bridge
+
+Opening in **writable mode (`"w"` or `"a"`) through the SKILL bridge is destructive** if the
+intent was exploration only:
+
+- `"w"` mode: creates a fresh, empty `.oa` file — **destroys existing schematic data**
+- `"a"` mode: opens for modification; any subsequent save (or Virtuoso internal flush) can
+  overwrite the on-disk file
+
+Observed incident (2026-04-19, CMOP): 3-arg `dbOpenCellViewByType` used for exploration opened
+the cellview in write mode, producing a blank 12 KB `.oa` that replaced the 38 KB schematic.
+Recovery required `cp sch.oa- sch.oa` + `dbPurge(cv)`.
+
+**Rule**: Any bridge call that only reads (instances, nets, terminals, properties) must use the
+`nil "r"` form above.
+
 ## When to Use
 - Any time you need to open a schematic cellview for writing from SKILL
 - When `dbOpenCellViewByType` returns nil unexpectedly
 - When implementing the OSSHNL-109 fix (schCheck + dbSave flow)
 - When debugging "cv locked" situations in IC23
+- When writing bridge-side exploration code — use the `nil "r"` form to avoid data loss
 
 ## Context Links
 - Leads to: [[cadence-osshnl-109]] (the main use case for write-mode cv access)

@@ -2,7 +2,7 @@
 
 ## Lifecycle State
 - Last Event: self-improve
-- Last Note: fix cb_port bug: actual_port+1 not argv+1; add diagnosis pattern to knowledge
+- Last Note: CMOP sim retrospective: CMI-2116 standalone flow, dbOpenCellViewByType write-mode danger, standalone PSF reading
 
 ## Project Paths
 - Project Root: `/home/meow/git/virtuoso-cli`

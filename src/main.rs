@@ -1121,14 +1121,13 @@ fn main() {
 
     // Propagate --session so VirtuosoClient::from_env() picks it up.
     //
-    // Because --session is a clap global arg, it can be captured even when the user
-    // passes it as a subcommand-local arg (e.g. `vcli maestro get-analyses --session fnxSession3`).
-    // To avoid clobbering a bridge session already set via VB_SESSION, we only write
-    // to VB_SESSION when VB_SESSION is not already present in the environment.
-    // Users who want to select the bridge session explicitly should pass `--session`
-    // BEFORE the subcommand name, or set VB_SESSION in the environment.
+    // Maestro subcommands define their own --session for Maestro session names
+    // (e.g. "fnxSession0"), which are NOT bridge session IDs. Propagating a
+    // Maestro session name to VB_SESSION causes VirtuosoClient::from_env() to
+    // look for a non-existent bridge session file and fall back to VB_PORT=0,
+    // producing ECONNREFUSED. Skip propagation for Maestro commands entirely.
     let session_from_env = std::env::var("VB_SESSION").ok();
-    if session_from_env.is_none() {
+    if session_from_env.is_none() && !matches!(&cli.command, Commands::Maestro(_)) {
         if let Some(ref s) = cli.session {
             std::env::set_var("VB_SESSION", s);
         }

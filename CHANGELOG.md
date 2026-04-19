@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-04-19
+
+### Added
+- **`vcli maestro session-info`** — inspect the focused ADE Assembler/Explorer window; returns `lib`, `cell`, `view`, `editable`, `unsaved_changes`, and `run_dir` as structured JSON
+- **Callback File IPC** — replaces `ipcWriteProcess` with a temp-file pair protocol (`/tmp/.ramic_cb_{port+1}` + `.done` marker); fixes IC23.1/RHEL8 platform bug where `ipcWriteProcess` data handler stops firing after the first call
+- **`spectre-netlist-template` skill** — 9 circuit-type templates (OTA, diff-OTA, LDO, comparator, bandgap reference, current mirror, active filter, VCO, LNA) with verified vsource/isource/analysis syntax from IC231 documentation
+- **`inject_stimulus.py` script** — standalone Python helper (no deps) that auto-detects circuit type from `subckt` port names and writes a complete Spectre testbench wrapper with stimulus + analysis statements
+
+### Fixed
+- **Callback file `cb_port` arithmetic** — daemon now derives `cb_port = actual_port + 1` from `listener.local_addr()` instead of `argv[2]`; previously the OS-assigned port was never propagated so all callback files were written to `/tmp/.ramic_cb_1`
+
+### Changed
+- **Release workflow** — new `.github/workflows/release.yml` builds Linux x86_64 release binaries and publishes to crates.io on `v*` tags
+
+## [0.2.0] - 2026-04-18
+
+### Changed
+- **`vcli optim` removed** — migrated to `circuit-optimizer` skill script (`scripts/run_bandgap_sweep.py`); deleted 650 lines of Rust and the `serde_yaml` dependency
+- **Zombie job fix** — `jobs.rs::refresh()` no longer marks a spectre process as alive based on PID alone; validates against the simulation log file to detect completed runs whose OS process has already exited
+
 ## [0.1.5] - 2026-04-15
 
 ### Added

@@ -1038,9 +1038,7 @@ fn dispatch_maestro(cmd: MaestroCmd) -> error::Result<serde_json::Value> {
         MaestroCmd::Run { session } => commands::maestro::run(&session),
         MaestroCmd::Save { session } => commands::maestro::save(&session),
         MaestroCmd::Export { session, path } => commands::maestro::export(&session, &path),
-        MaestroCmd::SessionInfo { session } => {
-            commands::maestro::session_info(session.as_deref())
-        }
+        MaestroCmd::SessionInfo { session } => commands::maestro::session_info(session.as_deref()),
     }
 }
 

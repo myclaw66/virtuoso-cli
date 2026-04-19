@@ -218,4 +218,3 @@ fn parse_ade_title(title: &str) -> Option<AdeWindowInfo> {
         unsaved_changes,
     })
 }
-

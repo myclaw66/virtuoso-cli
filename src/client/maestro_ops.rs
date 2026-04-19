@@ -120,7 +120,9 @@ impl MaestroOps {
     /// Get simulation run directory for a maestro session via asiGetAnalogRunDir.
     pub fn run_dir_skill(&self, session: &str) -> String {
         let session = escape_skill_string(session);
-        format!(r#"let((sess) sess=asiGetSession("{session}") if(sess asiGetAnalogRunDir(sess) nil))"#)
+        format!(
+            r#"let((sess) sess=asiGetSession("{session}") if(sess asiGetAnalogRunDir(sess) nil))"#
+        )
     }
 
     /// Export results to CSV.

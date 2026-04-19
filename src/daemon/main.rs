@@ -81,8 +81,7 @@ fn handle_connection(mut conn: TcpStream, cb_port: u16) -> io::Result<()> {
 fn read_callback_file(cb_port: u16, timeout_secs: u64) -> io::Result<Vec<u8>> {
     let data_file = format!("/tmp/.ramic_cb_{cb_port}");
     let done_file = format!("/tmp/.ramic_cb_{cb_port}.done");
-    let deadline =
-        std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(timeout_secs);
 
     loop {
         if std::time::Instant::now() > deadline {

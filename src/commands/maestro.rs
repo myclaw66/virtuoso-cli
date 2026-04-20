@@ -183,34 +183,49 @@ pub fn export(session: &str, path: &str) -> Result<Value> {
 
 /// Inspect the focused ADE window and return session metadata.
 ///
-/// Always makes one SKILL call (focused window title + session list).
-/// Makes a second call only when `session` is provided (to get run_dir).
+/// Inspect the focused ADE window and return session metadata.
+///
+/// Always makes one SKILL call. A second call is made only when `session` is explicitly
+/// provided AND it differs from the davSession bound to the focused window.
 pub fn session_info(session: Option<&str>) -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
 
     let skill = client.maestro.focused_window_skill();
     let r = client.execute_skill(&skill, None)?;
 
-    // SKILL output: ("ADE Assembler Editing: LIB CELL VIEW*" ("t1" ...) ("sess1" ...))
-    let focused = extract_first_skill_string(&r.output);
+    // SKILL output: (title davSession (all_titles...) (sessions...) run_dir_or_nil)
+    let tokens = parse_skill_list_top_level(&r.output);
+    let focused = tokens.first().and_then(|t| extract_skill_string_token(t));
+    let dav_session = tokens.get(1).and_then(|t| extract_skill_string_token(t));
+    let bundled_run_dir = tokens.get(4).and_then(|t| extract_skill_string_token(t));
+
     let parsed = focused.as_deref().and_then(parse_ade_title);
 
-    let run_dir = if let Some(s) = session {
-        let skill2 = client.maestro.run_dir_skill(s);
-        let r2 = client.execute_skill(&skill2, None)?;
-        if r2.skill_ok() {
-            Some(r2.output.trim_matches('"').to_string())
-        } else {
-            None
+    // Resolve effective session: explicit arg → davSession from window → None
+    let effective_session = session.map(str::to_owned).or_else(|| dav_session.clone());
+
+    let run_dir = match (session, &dav_session) {
+        // Explicit session matches the window's bound session — use bundled run_dir (0 extra RTT)
+        (Some(s), Some(dav)) if s == dav => bundled_run_dir,
+        // Explicit session differs (or no dav) — need a separate call
+        (Some(s), _) => {
+            let skill2 = client.maestro.run_dir_skill(s);
+            let r2 = client.execute_skill(&skill2, None)?;
+            if r2.skill_ok() {
+                Some(r2.output.trim_matches('"').to_string())
+            } else {
+                None
+            }
         }
-    } else {
-        None
+        // No explicit session — use bundled run_dir for focused window's session
+        (None, _) => bundled_run_dir,
     };
 
     Ok(json!({
         "status": "success",
         "focused_window": focused,
-        "session": session,
+        "dav_session": dav_session,
+        "session": effective_session,
         "application": parsed.as_ref().map(|p| p.application.as_str()),
         "lib": parsed.as_ref().map(|p| p.lib.as_str()),
         "cell": parsed.as_ref().map(|p| p.cell.as_str()),
@@ -221,13 +236,72 @@ pub fn session_info(session: Option<&str>) -> Result<Value> {
     }))
 }
 
-/// Extract the first quoted string from a SKILL list like `("foo" ...)`.
-fn extract_first_skill_string(s: &str) -> Option<String> {
-    let s = s.trim().strip_prefix('(')?;
-    let start = s.find('"')?;
-    let inner = &s[start + 1..];
-    let end = inner.find('"')?;
-    Some(inner[..end].to_string())
+/// Tokenize the top-level elements of a SKILL list, respecting nested parens and quoted strings.
+///
+/// `(tok1 tok2 (sub list) "quoted str")` → `["tok1", "tok2", "(sub list)", "\"quoted str\""]`
+fn parse_skill_list_top_level(s: &str) -> Vec<String> {
+    let s = s.trim();
+    let Some(inner) = s.strip_prefix('(') else {
+        return vec![];
+    };
+    let inner = inner.strip_suffix(')').unwrap_or(inner);
+    let mut result = Vec::new();
+    let mut depth = 0i32;
+    let mut in_string = false;
+    let mut current = String::new();
+    let mut chars = inner.chars().peekable();
+    while let Some(c) = chars.next() {
+        match (c, in_string) {
+            ('"', false) => {
+                in_string = true;
+                current.push(c);
+            }
+            ('\\', true) => {
+                current.push(c);
+                if let Some(n) = chars.next() {
+                    current.push(n);
+                }
+            }
+            ('"', true) => {
+                in_string = false;
+                current.push(c);
+            }
+            ('(', false) => {
+                depth += 1;
+                current.push(c);
+            }
+            (')', false) => {
+                depth -= 1;
+                current.push(c);
+            }
+            (' ' | '\t' | '\n', false) if depth == 0 => {
+                let tok = current.trim().to_string();
+                if !tok.is_empty() {
+                    result.push(tok);
+                }
+                current.clear();
+            }
+            _ => current.push(c),
+        }
+    }
+    let tok = current.trim().to_string();
+    if !tok.is_empty() {
+        result.push(tok);
+    }
+    result
+}
+
+/// Extract the string value from a SKILL token: `"foo"` → `Some("foo")`, `nil` → `None`.
+fn extract_skill_string_token(token: &str) -> Option<String> {
+    let s = token.trim();
+    if s == "nil" || s.is_empty() {
+        return None;
+    }
+    if s.starts_with('"') && s.ends_with('"') && s.len() >= 2 {
+        Some(s[1..s.len() - 1].to_string())
+    } else {
+        None
+    }
 }
 
 struct AdeWindowInfo {
@@ -382,4 +456,48 @@ pub fn get_history_list(session: &str) -> Result<Value> {
         )));
     }
     parse_skill_json(&r.output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tokenizer_5_element_list() {
+        let input = r#"("title str" "sess" ("w1" "w2") ("s1") nil)"#;
+        let tokens = parse_skill_list_top_level(input);
+        assert_eq!(tokens.len(), 5, "{tokens:?}");
+        assert_eq!(tokens[0], r#""title str""#);
+        assert_eq!(tokens[1], r#""sess""#);
+        assert_eq!(tokens[4], "nil");
+    }
+
+    #[test]
+    fn tokenizer_with_backslash_escape_in_string() {
+        // SKILL octal escape \256 for ® char — must not confuse the tokenizer
+        let input = r#"("Virtuoso\256 ADE Explorer Editing: LIB CELL V" "fnxSession0")"#;
+        let tokens = parse_skill_list_top_level(input);
+        assert_eq!(tokens.len(), 2, "{tokens:?}");
+        assert_eq!(tokens[1], r#""fnxSession0""#);
+    }
+
+    #[test]
+    fn tokenizer_empty_list() {
+        assert_eq!(parse_skill_list_top_level("nil"), vec![] as Vec<String>);
+        assert_eq!(parse_skill_list_top_level("()"), vec![] as Vec<String>);
+    }
+
+    #[test]
+    fn extract_token_quoted() {
+        assert_eq!(
+            extract_skill_string_token(r#""fnxSession0""#),
+            Some("fnxSession0".to_owned())
+        );
+    }
+
+    #[test]
+    fn extract_token_nil() {
+        assert_eq!(extract_skill_string_token("nil"), None);
+        assert_eq!(extract_skill_string_token(""), None);
+    }
 }

@@ -117,13 +117,19 @@ impl MaestroOps {
         format!(r#"maeGetSimulationMessages(?session "{session}")"#)
     }
 
-    /// Get focused ADE window name, all window names, and active sessions.
-    /// Returns a SKILL list: (focused_window_name (all_names...) (sessions...))
+    /// Get focused ADE window name, davSession, all window names, sessions, and run_dir in one RTT.
+    ///
+    /// Returns a 5-element SKILL list:
+    ///   (title davSession (all_titles...) (sessions...) run_dir_or_nil)
+    ///
+    /// `davSession` is `cw->davSession` — the Maestro session name bound to the ADE window.
+    /// `run_dir_or_nil` is bundled so callers need only 1 RTT when the focused window has a session.
     pub fn focused_window_skill(&self) -> String {
-        r#"let((cw) cw=hiGetCurrentWindow() list(if(cw hiGetWindowName(cw) nil) mapcar(lambda((w) hiGetWindowName(w)) hiGetWindowList()) maeGetSessions()))"#.into()
+        r#"let((cw sess) cw=hiGetCurrentWindow() sess=if(cw cw->davSession nil) list(if(cw hiGetWindowName(cw) nil) sess mapcar(lambda((w) hiGetWindowName(w)) hiGetWindowList()) maeGetSessions() if(sess let((s) s=asiGetSession(sess) if(s asiGetAnalogRunDir(s) nil)) nil)))"#.into()
     }
 
     /// Get simulation run directory for a maestro session via asiGetAnalogRunDir.
+    /// Used when the caller provides a different session than the focused window's davSession.
     pub fn run_dir_skill(&self, session: &str) -> String {
         let session = escape_skill_string(session);
         format!(

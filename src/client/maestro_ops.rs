@@ -85,7 +85,9 @@ impl MaestroOps {
     /// IC23.1: `maeGetTestOutputs` returns list-of-lists; elements accessed via car/cadr/caddr.
     pub fn get_outputs(&self, test_name: &str) -> String {
         let test_name = escape_skill_string(test_name);
-        format!(r#"let((outs out sep) outs = maeGetTestOutputs("{test_name}") out = "[" sep = "" foreach(o outs out = strcat(out sep sprintf(nil "{{\"name\":\"%s\",\"test\":\"%s\",\"expr\":\"%s\"}}" car(o) cadr(o) if(caddr(o) then caddr(o) else ""))) sep = ",") strcat(out "]"))"#)
+        format!(
+            r#"let((outs out sep) outs = maeGetTestOutputs("{test_name}") out = "[" sep = "" foreach(o outs out = strcat(out sep sprintf(nil "{{\"name\":\"%s\",\"test\":\"%s\",\"expr\":\"%s\"}}" car(o) cadr(o) if(caddr(o) then caddr(o) else ""))) sep = ",") strcat(out "]"))"#
+        )
     }
 
     pub fn add_output(&self, output_name: &str, test_name: &str, expr: &str) -> String {
@@ -158,9 +160,7 @@ impl MaestroOps {
 
     pub fn get_result_outputs(&self, test_name: &str) -> String {
         let test_name = escape_skill_string(test_name);
-        skill_strings_to_json(&format!(
-            r#"maeGetResultOutputs(?testName "{test_name}")"#
-        ))
+        skill_strings_to_json(&format!(r#"maeGetResultOutputs(?testName "{test_name}")"#))
     }
 
     pub fn get_output_value(&self, name: &str, test_name: &str, corner: Option<&str>) -> String {
@@ -199,7 +199,9 @@ impl MaestroOps {
 /// If `list_expr` returns nil (empty), the output is `"[]"`.
 /// This ensures list-returning ops never produce SKILL nil — callers use r.ok() not r.skill_ok().
 fn skill_strings_to_json(list_expr: &str) -> String {
-    format!(r#"let((xs out sep) xs = {list_expr} out = "[" sep = "" foreach(x xs out = strcat(out sep sprintf(nil "\"%s\"" x)) sep = ",") strcat(out "]"))"#)
+    format!(
+        r#"let((xs out sep) xs = {list_expr} out = "[" sep = "" foreach(x xs out = strcat(out sep sprintf(nil "\"%s\"" x)) sep = ",") strcat(out "]"))"#
+    )
 }
 
 /// Convert a JSON object string to a SKILL association list.
@@ -209,8 +211,8 @@ fn skill_strings_to_json(list_expr: &str) -> String {
 ///
 /// Returns `Err` if the input is not valid JSON or not a JSON object.
 pub(crate) fn json_to_skill_alist(json_str: &str) -> Result<String, String> {
-    let parsed: serde_json::Value = serde_json::from_str(json_str)
-        .map_err(|e| format!("invalid JSON: {e}"))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(json_str).map_err(|e| format!("invalid JSON: {e}"))?;
     let obj = parsed
         .as_object()
         .ok_or_else(|| "expected a JSON object".to_string())?;
@@ -300,7 +302,10 @@ mod tests {
     #[test]
     fn set_analysis_ic23_no_options() {
         let s = ops().set_analysis("sess1", "ac", None, VirtuosoVersion::IC23);
-        assert!(!s.contains("?options"), "IC23 path must not inject options: {s}");
+        assert!(
+            !s.contains("?options"),
+            "IC23 path must not inject options: {s}"
+        );
     }
 
     #[test]

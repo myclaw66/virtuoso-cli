@@ -105,11 +105,7 @@ pub fn get_analyses(session: &str) -> Result<Value> {
     parse_skill_json(&r.output)
 }
 
-pub fn set_analysis(
-    session: &str,
-    analysis_type: &str,
-    options: Option<&str>,
-) -> Result<Value> {
+pub fn set_analysis(session: &str, analysis_type: &str, options: Option<&str>) -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
 
     let (options_alist, version) = match options {
@@ -127,7 +123,10 @@ pub fn set_analysis(
         }
     };
 
-    let skill = client.maestro.set_analysis(session, analysis_type, options_alist.as_deref(), version);
+    let skill =
+        client
+            .maestro
+            .set_analysis(session, analysis_type, options_alist.as_deref(), version);
     let r = client.execute_skill(&skill, None)?;
     Ok(json!({
         "status": if r.skill_ok() { "success" } else { "error" },

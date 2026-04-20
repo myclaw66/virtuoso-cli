@@ -67,8 +67,9 @@ All binaries (`vcli`, `vtui`) are installed to `~/.cargo/bin/`.
 
 ```skill
 load("/path/to/virtuoso-cli/resources/ramic_bridge.il")
-vcli()
 ```
+
+`load` automatically stops any existing daemon, resets the path to `~/.cargo/bin/virtuoso-daemon`, starts fresh, and prints the Ready banner — works for first load and for reloading after updates.
 
 Output:
 ```
@@ -77,6 +78,8 @@ Output:
 ├─────────────────────────────────────────┤
 │  Session : eda-meow-1                   │
 │  Port    : 42109                        │
+│  Version : 0.3.2                        │
+│  Daemon  : ~/.cargo/bin/virtuoso-daemon │
 ├─────────────────────────────────────────┤
 │  Terminal: vcli skill exec 'version()'  │
 │  Sessions: vcli session list            │
@@ -87,14 +90,6 @@ Add to `~/.cdsinit` for automatic loading on Virtuoso startup:
 ```skill
 load("/path/to/virtuoso-cli/resources/ramic_bridge.il")
 ```
-
-**Reload after updating vcli (in Virtuoso CIW):**
-
-```skill
-load("/path/to/virtuoso-cli/resources/ramic_bridge.il")
-```
-
-`load` automatically stops the old daemon, resets the daemon path to `~/.cargo/bin/virtuoso-daemon`, and starts fresh — the Ready banner appears in CIW when the bridge is up.
 
 **2. Connect from terminal:**
 
@@ -282,8 +277,9 @@ cargo install --path .
 
 ```skill
 load("/path/to/virtuoso-cli/resources/ramic_bridge.il")
-vcli()
 ```
+
+`load` 会自动停止旧 daemon、将路径重置为 `~/.cargo/bin/virtuoso-daemon` 并重启，首次加载和更新后重载均适用。
 
 输出：
 ```
@@ -292,6 +288,8 @@ vcli()
 ├─────────────────────────────────────────┤
 │  Session : eda-meow-1                   │
 │  Port    : 42109                        │
+│  Version : 0.3.2                        │
+│  Daemon  : ~/.cargo/bin/virtuoso-daemon │
 ├─────────────────────────────────────────┤
 │  Terminal: vcli skill exec 'version()'  │
 │  Sessions: vcli session list            │
@@ -302,14 +300,6 @@ vcli()
 ```skill
 load("/path/to/virtuoso-cli/resources/ramic_bridge.il")
 ```
-
-**更新 vcli 后重新加载 Bridge（在 Virtuoso CIW 中执行）：**
-
-```skill
-load("/path/to/virtuoso-cli/resources/ramic_bridge.il")
-```
-
-`load` 会自动停止旧 daemon、将路径重置为 `~/.cargo/bin/virtuoso-daemon` 并重启——Bridge 就绪后 Ready 横幅会显示在 CIW 中。
 
 **第二步：从终端连接：**
 

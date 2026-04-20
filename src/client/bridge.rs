@@ -5,8 +5,10 @@ use crate::client::window_ops::WindowOps;
 use crate::error::{Result, VirtuosoError};
 use crate::models::{ExecutionStatus, VirtuosoResult};
 use crate::transport::tunnel::SSHClient;
+use crate::version::VirtuosoVersion;
 use std::io::{Read, Write};
 use std::net::TcpStream;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 const STX: u8 = 0x02;
@@ -22,6 +24,7 @@ pub struct VirtuosoClient {
     pub maestro: MaestroOps,
     pub schematic: SchematicOps,
     pub window: WindowOps,
+    cached_version: Arc<Mutex<Option<VirtuosoVersion>>>,
 }
 
 impl VirtuosoClient {
@@ -35,6 +38,7 @@ impl VirtuosoClient {
             maestro: MaestroOps,
             schematic: SchematicOps::new(),
             window: WindowOps,
+            cached_version: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -109,6 +113,7 @@ impl VirtuosoClient {
             maestro: MaestroOps,
             schematic: SchematicOps::new(),
             window: WindowOps,
+            cached_version: Arc::new(Mutex::new(None)),
         })
     }
 
@@ -335,6 +340,20 @@ impl VirtuosoClient {
 
     pub fn tunnel(&self) -> Option<&SSHClient> {
         self.tunnel.as_ref()
+    }
+
+    /// Detect and cache the Virtuoso IC version.
+    /// First call queries the daemon; subsequent calls return the cached result.
+    pub fn version(&self) -> Result<VirtuosoVersion> {
+        {
+            let cache = self.cached_version.lock().unwrap();
+            if let Some(v) = *cache {
+                return Ok(v);
+            }
+        }
+        let v = crate::version::detect_version(self)?;
+        *self.cached_version.lock().unwrap() = Some(v);
+        Ok(v)
     }
 }
 

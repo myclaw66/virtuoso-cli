@@ -67,7 +67,7 @@ vcli skill exec 'maeExportOutputView(?session "fnxSession0" ?fileName "/tmp/resu
 |------|----------------|------|
 | `maeGetSessions` | `()` | 无参 |
 | `maeIsValidMaestroSession` | `(sessionName)` | positional |
-| `maeGetSetup` | `(?session sessionName)` | keyword |
+| `maeGetSetup` | `(?session sessionName)` | keyword，返回 list `("setupName")` |
 | `maeSetAnalysis` | `(setupName analysisType)` | positional，arg2 是 type 字符串，返回 `t` 成功 |
 | `maeGetEnabledAnalysis` | `(setupName)` | positional，**不接受** `?session` keyword |
 | `maeGetAnalysis` | `(setupName sessionName)` | 两个 positional |
@@ -82,12 +82,43 @@ vcli skill exec 'maeExportOutputView(?session "fnxSession0" ?fileName "/tmp/resu
 | `maeGetVar` | `(name)` | positional，无 session 参数 |
 | `maeSetDesign` | `(?session s ?libName l ?cellName c ?viewName v)` | keyword |
 
+## 版本检测与自动适配
+
+vcli 自动检测 Virtuoso IC 版本（IC23 vs IC25），并使用对应的 SKILL API 签名。检测通过 `getVersionString()` 实现，结果缓存在内存中。
+
+**版本差异关键点：**
+
+| 函数 | IC23 | IC25 | 差异 |
+|------|------|------|------|
+| `maeGetSetup` | 返回 list `("setupName")` → 需要 `car()` | 返回 string `"setupName"` | IC25 下 `car()` 返回 nil |
+| `maeSetAnalysis` | `(setupName type)` positional | `(type ?session s ?enable t ?options \`(...))` keyword | IC25 不接受 setup name 作为第一个参数 |
+| `maeGetEnabledAnalysis` | `(setupName)` positional | `(?session s)` keyword | IC25 用 `?session` 取代 setup name |
+| `maeSetAnalysis ?options` | 不支持通过 CLI 配置 | 支持 JSON → backtick alist | IC25 需要 `?options` 配置 sweep 参数 |
+
+CLI 的 `set-analysis` 命令在 IC25 下支持 `--options` 参数：
+```bash
+vcli maestro set-analysis --session fnxSession0 --analysis ac --options '{"start":"1","stop":"10G","dec":"20"}'
+```
+
 ## 常见问题
 
 ### maeGetEnabledAnalysis 在 IC23.1 下签名与 IC25 文档不同
 
-PR #2 按照 IC25.1 文档将其改为 `?session` keyword，但 IC23.1 实际只接受 positional `(setupName)`。
-`get_analyses` 内部已通过 `maeGetSetup` 解析 setup 名规避此问题。
+IC23.1 实际只接受 positional `(setupName)`，IC25 使用 `?session` keyword。
+vcli 自动按版本选择正确的签名，无需手动干预。
+
+### Xvfb 未安装 (EXPLORER-9512)
+
+```bash
+# Rocky Linux / RHEL / CentOS
+sudo dnf install -y xorg-x11-server-Xvfb
+
+# Ubuntu / Debian
+sudo apt install -y xvfb
+
+# 或设置环境变量指向已有 Xvfb
+export CDS_XVFB_PATH=/path/to/dir/containing/Xvfb
+```
 
 ### Xvfb 未安装 (EXPLORER-9512)
 

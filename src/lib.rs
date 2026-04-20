@@ -12,3 +12,4 @@ pub mod output;
 pub mod spectre;
 pub mod transport;
 pub mod tui;
+pub mod version;

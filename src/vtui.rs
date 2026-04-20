@@ -12,6 +12,7 @@ mod output;
 mod spectre;
 mod transport;
 mod tui;
+mod version;
 
 fn main() {
     if let Err(e) = tui::run_tui() {

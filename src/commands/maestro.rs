@@ -16,7 +16,9 @@ pub fn open(lib: &str, cell: &str, view: &str) -> Result<Value> {
     Ok(json!({
         "status": "success",
         "session": r.output.trim_matches('"'),
-        "lib": lib, "cell": cell, "view": view,
+        "lib": lib,
+        "cell": cell,
+        "view": view,
     }))
 }
 
@@ -44,30 +46,90 @@ pub fn list_sessions() -> Result<Value> {
     parse_skill_json(&r.output)
 }
 
-pub fn set_var(session: &str, name: &str, value: &str) -> Result<Value> {
+pub fn set_var(name: &str, value: &str) -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
-    let skill = client.maestro.set_var(session, name, value);
+    let skill = client.maestro.set_var(name, value);
     let r = client.execute_skill(&skill, None)?;
     Ok(json!({
         "status": if r.skill_ok() { "success" } else { "error" },
-        "session": session, "variable": name, "value": value,
+        "variable": name,
+        "value": value,
         "output": r.output,
     }))
 }
 
+pub fn get_var(name: &str) -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.maestro.get_var(name);
+    let r = client.execute_skill(&skill, None)?;
+    let value = if r.skill_ok() {
+        r.output.trim_matches('"').to_string()
+    } else {
+        r.output.clone()
+    };
+    Ok(json!({
+        "status": if r.skill_ok() { "success" } else { "error" },
+        "variable": name,
+        "value": value,
+    }))
+}
+
+pub fn list_vars() -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.maestro.list_vars();
+    let r = client.execute_skill(&skill, None)?;
+    if !r.skill_ok() {
+        return Err(VirtuosoError::Execution(format!(
+            "Failed to list variables: {}",
+            r.output
+        )));
+    }
+    parse_skill_json(&r.output)
+}
+
 pub fn get_analyses(session: &str) -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
-    let skill = client.maestro.get_analyses(session);
+    let version = client.version()?;
+    let skill = client.maestro.get_analyses(session, version);
     let r = client.execute_skill(&skill, None)?;
+    if !r.skill_ok() {
+        return Err(VirtuosoError::Execution(format!(
+            "Failed to get analyses for session '{}': {}",
+            session, r.output
+        )));
+    }
     Ok(json!({
         "session": session,
         "analyses": r.output.trim_matches('"'),
     }))
 }
 
-pub fn set_analysis(session: &str, analysis_type: &str) -> Result<Value> {
+pub fn set_analysis(
+    session: &str,
+    analysis_type: &str,
+    options: Option<&str>,
+) -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
-    let skill = client.maestro.set_analysis(session, analysis_type);
+    let version = client.version()?;
+
+    // Validate --options JSON and convert to SKILL alist; warn if IC23 path ignores it.
+    let options_alist: Option<String> = match options {
+        None => None,
+        Some(opts) => {
+            let alist = crate::client::maestro_ops::json_to_skill_alist(opts)
+                .map_err(|e| VirtuosoError::Execution(format!("--options: {e}")))?;
+            if !version.is_ic25() {
+                eprintln!(
+                    "warning: --options is only supported on IC25; ignoring on IC23 path"
+                );
+                None
+            } else {
+                Some(alist)
+            }
+        }
+    };
+
+    let skill = client.maestro.set_analysis(session, analysis_type, options_alist.as_deref(), version);
     let r = client.execute_skill(&skill, None)?;
     Ok(json!({
         "status": if r.skill_ok() { "success" } else { "error" },
@@ -87,13 +149,15 @@ pub fn run(session: &str) -> Result<Value> {
     }))
 }
 
-pub fn add_output(session: &str, name: &str, expr: &str) -> Result<Value> {
+pub fn add_output(output_name: &str, test_name: &str, expr: &str) -> Result<Value> {
     let client = VirtuosoClient::from_env()?;
-    let skill = client.maestro.add_output(session, name, expr);
+    let skill = client.maestro.add_output(output_name, test_name, expr);
     let r = client.execute_skill(&skill, None)?;
     Ok(json!({
         "status": if r.skill_ok() { "success" } else { "error" },
-        "session": session, "name": name, "expression": expr,
+        "output_name": output_name,
+        "test_name": test_name,
+        "expression": expr,
         "output": r.output,
     }))
 }
@@ -131,7 +195,6 @@ pub fn session_info(session: Option<&str>) -> Result<Value> {
     let r = client.execute_skill(&skill, None)?;
 
     // SKILL output: ("ADE Assembler Editing: LIB CELL VIEW*" ("t1" ...) ("sess1" ...))
-    // Extract the first element (focused window title) from the SKILL list string
     let focused = extract_first_skill_string(&r.output);
     let parsed = focused.as_deref().and_then(parse_ade_title);
 
@@ -214,4 +277,121 @@ fn parse_ade_title(title: &str) -> Option<AdeWindowInfo> {
         editable,
         unsaved_changes,
     })
+}
+
+// ============================================================================
+// Result Reading Functions
+// ============================================================================
+
+/// Open a history run for programmatic result access.
+pub fn open_results(history: &str) -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.maestro.open_results(history);
+    let r = client.execute_skill(&skill, None)?;
+    Ok(json!({
+        "status": if r.skill_ok() { "success" } else { "error" },
+        "history": history,
+        "output": r.output,
+    }))
+}
+
+/// Close the currently open results.
+pub fn close_results() -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.maestro.close_results();
+    let r = client.execute_skill(&skill, None)?;
+    Ok(json!({
+        "status": if r.skill_ok() { "success" } else { "error" },
+    }))
+}
+
+/// List all test names that have results in the current history.
+pub fn get_result_tests() -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.maestro.get_result_tests();
+    let r = client.execute_skill(&skill, None)?;
+    if !r.skill_ok() {
+        return Err(VirtuosoError::Execution(format!(
+            "Failed to get result tests: {}",
+            r.output
+        )));
+    }
+    parse_skill_json(&r.output)
+}
+
+/// List all output names available for a given test.
+pub fn get_result_outputs(test_name: &str) -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.maestro.get_result_outputs(test_name);
+    let r = client.execute_skill(&skill, None)?;
+    if !r.skill_ok() {
+        return Err(VirtuosoError::Execution(format!(
+            "Failed to get result outputs: {}",
+            r.output
+        )));
+    }
+    parse_skill_json(&r.output)
+}
+
+/// Get the value of a specific output for a specific test and corner.
+pub fn get_output_value(name: &str, test_name: &str, corner: Option<&str>) -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.maestro.get_output_value(name, test_name, corner);
+    let r = client.execute_skill(&skill, None)?;
+    let value = if r.skill_ok() {
+        r.output.trim_matches('"').to_string()
+    } else {
+        r.output.clone()
+    };
+    Ok(json!({
+        "status": if r.skill_ok() { "success" } else { "error" },
+        "output_name": name,
+        "test_name": test_name,
+        "corner": corner,
+        "value": value,
+    }))
+}
+
+/// Get the spec pass/fail status for an output.
+pub fn get_spec_status(name: &str, test_name: &str) -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.maestro.get_spec_status(name, test_name);
+    let r = client.execute_skill(&skill, None)?;
+    let status = if r.skill_ok() {
+        r.output.trim_matches('"').to_string()
+    } else {
+        r.output.clone()
+    };
+    Ok(json!({
+        "status": if r.skill_ok() { "success" } else { "error" },
+        "output_name": name,
+        "test_name": test_name,
+        "spec_status": status,
+    }))
+}
+
+/// Get simulation messages (errors/warnings) from the last run.
+pub fn get_sim_messages(session: &str) -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.maestro.get_sim_messages(session);
+    let r = client.execute_skill(&skill, None)?;
+    Ok(json!({
+        "status": if r.skill_ok() { "success" } else { "error" },
+        "session": session,
+        "messages": r.output,
+    }))
+}
+
+/// List available history runs for the current Maestro session.
+pub fn get_history_list() -> Result<Value> {
+    let client = VirtuosoClient::from_env()?;
+    let skill = client.maestro.get_history_list();
+    let r = client.execute_skill(&skill, None)?;
+    if !r.skill_ok() {
+        return Err(VirtuosoError::Execution(format!(
+            "Failed to get history list: {}",
+            r.output
+        )));
+    }
+    parse_skill_json(&r.output)
 }

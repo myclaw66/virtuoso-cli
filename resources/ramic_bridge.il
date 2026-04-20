@@ -396,5 +396,8 @@ procedure(vcli()
     )
 )
 
-; Auto-start the bridge when this file is loaded (no second daemon if already up)
-RBStart()
+; On every load: reset legacy fields, resolve daemon path, restart bridge, show banner.
+RBPython = ""
+RBDPath = strcat(getShellEnvVar("HOME") "/.cargo/bin/virtuoso-daemon")
+when(boundp('RBIpc) && ipcIsAliveProcess(RBIpc) RBStop())
+vcli()

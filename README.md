@@ -93,11 +93,9 @@ vcli()
 
 ```skill
 load("/path/to/virtuoso-cli/resources/ramic_bridge.il")
-RBStop()
-RBPython = ""
-RBDPath = "~/.cargo/bin/virtuoso-daemon"
-RBStart()
 ```
+
+`load` automatically stops the old daemon, resets the daemon path to `~/.cargo/bin/virtuoso-daemon`, and starts fresh — the Ready banner appears in CIW when the bridge is up.
 
 **2. Connect from terminal:**
 
@@ -311,11 +309,9 @@ vcli()
 
 ```skill
 load("/path/to/virtuoso-cli/resources/ramic_bridge.il")
-RBStop()
-RBPython = ""
-RBDPath = "~/.cargo/bin/virtuoso-daemon"
-RBStart()
 ```
+
+`load` 会自动停止旧 daemon、将路径重置为 `~/.cargo/bin/virtuoso-daemon` 并重启——Bridge 就绪后 Ready 横幅会显示在 CIW 中。
 
 **第二步：从终端连接：**
 

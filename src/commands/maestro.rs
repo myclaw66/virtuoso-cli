@@ -241,7 +241,8 @@ struct AdeWindowInfo {
 
 /// Parse an ADE window title: `ADE Assembler Editing: LIB CELL VIEW[*]`
 fn parse_ade_title(title: &str) -> Option<AdeWindowInfo> {
-    let rest = title.strip_prefix("ADE ")?;
+    let ade_pos = title.find("ADE ")?;
+    let rest = &title[ade_pos + 4..];
 
     let (app, rest) = if let Some(r) = rest.strip_prefix("Assembler ") {
         ("assembler", r)

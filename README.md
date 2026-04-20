@@ -86,7 +86,6 @@ Output:
 Add to `~/.cdsinit` for automatic loading on Virtuoso startup:
 ```skill
 load("/path/to/virtuoso-cli/resources/ramic_bridge.il")
-vcli()
 ```
 
 **Reload after updating vcli (in Virtuoso CIW):**
@@ -302,7 +301,6 @@ vcli()
 在 `~/.cdsinit` 中加入以下内容，实现 Virtuoso 启动时自动加载：
 ```skill
 load("/path/to/virtuoso-cli/resources/ramic_bridge.il")
-vcli()
 ```
 
 **更新 vcli 后重新加载 Bridge（在 Virtuoso CIW 中执行）：**

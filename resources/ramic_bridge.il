@@ -29,10 +29,11 @@ when(RBDPath == "" || RBDPath == nil
 unless(boundp('RBPython) RBPython = "")
 ; All state vars preserved across reloads — only initialized if not yet bound.
 ; RBPort must NOT be reset on reload: the running daemon's actual port would be lost.
-unless(boundp('RBPort)      RBPort      = 0)   ; 0 = OS assigns; updated by RBIpcErrHandler
-unless(boundp('RBLocal)     RBLocal     = nil)
-unless(boundp('RBEcho)      RBEcho      = nil)
-unless(boundp('RBDLog)      RBDLog      = nil)
+unless(boundp('RBPort)       RBPort       = 0)   ; 0 = OS assigns; updated by RBIpcErrHandler
+unless(boundp('RBLocal)      RBLocal      = nil)
+unless(boundp('RBEcho)       RBEcho       = nil)
+unless(boundp('RBDLog)       RBDLog       = nil)
+unless(boundp('RBShowBanner) RBShowBanner = nil) ; t = print banner when next PORT: arrives
 
 ; IPC process handle — must survive reload so we don't spawn a second daemon.
 unless(boundp('RBIpc) RBIpc = 'unbound)
@@ -85,6 +86,11 @@ procedure(RBIpcErrHandler(ipcId data)
                 RBPort = actualPort
                 RBWriteSession(RBSessionId RBPort)
                 printf("[RAMIC Bridge] Session '%s' on port %d\n" RBSessionId RBPort)
+                ; Print banner here so the port is always known-correct.
+                when(RBShowBanner
+                    RBShowBanner = nil
+                    RBPrintBanner()
+                )
             )
         )
     )
@@ -141,6 +147,7 @@ procedure(RBStop()
 	if(boundp('RBIpc) && ipcIsAliveProcess(RBIpc) then
 		ipcKillProcess(RBIpc)
 		RBDeleteSession(RBSessionId)
+		RBPort = 0   ; clear stale port so next start shows correct value
 	else
 		printf("[RAMIC Bridge] is already down\n" )
 	)
@@ -364,40 +371,53 @@ procedure(RBPrintEmptyLines()
 )
 
 ; ============================================================================
-; virtuoso_cli() — convenience wrapper: start bridge + print connection info
+; RBPrintBanner — print the Ready box to CIW (called by RBIpcErrHandler
+;                 after PORT is confirmed, so the port is always correct)
 ; ============================================================================
-; Call this in .cdsinit or CIW instead of calling RBStart() directly.
-; Prints session ID and the vcli command to use in the terminal.
+
+procedure(RBPrintBanner()
+    printf("\n")
+    printf("┌─────────────────────────────────────────┐\n")
+    printf("│  vcli (Virtuoso CLI Bridge) — Ready     │\n")
+    printf("├─────────────────────────────────────────┤\n")
+    printf("│  Session : %-29s │\n" RBSessionId)
+    printf("│  Port    : %-29d │\n" RBPort)
+    printf("├─────────────────────────────────────────┤\n")
+    printf("│  Terminal: vcli skill exec 'version()'  │\n")
+    printf("│  Sessions: vcli session list            │\n")
+    printf("└─────────────────────────────────────────┘\n")
+    printf("\n")
+)
+
+; ============================================================================
+; vcli() — convenience wrapper: start bridge + show Ready banner.
+; Banner prints after PORT is received so the port number is always correct.
+; ============================================================================
 
 procedure(vcli()
-    ; Start bridge (no-op if already running)
-    RBStart()
-    ; Print connection summary
-    if(boundp('RBIpc) && ipcIsAliveProcess(RBIpc) then
-        printf("\n")
-        printf("┌─────────────────────────────────────────┐\n")
-        printf("│  vcli (Virtuoso CLI Bridge) — Ready     │\n")
-        printf("├─────────────────────────────────────────┤\n")
-        printf("│  Session : %-29s │\n" RBSessionId)
-        if(RBPort > 0 then
-            printf("│  Port    : %-29d │\n" RBPort)
-        else
-            printf("│  Port    : (assigning...)               │\n")
-        )
-        printf("├─────────────────────────────────────────┤\n")
-        printf("│  Terminal: vcli skill exec 'version()'  │\n")
-        printf("│  Sessions: vcli session list            │\n")
-        printf("└─────────────────────────────────────────┘\n")
-        printf("\n")
-        ; Session file is written automatically by RBIpcErrHandler when PORT: arrives.
-        ; Do NOT call RBWriteSession here — it would race with the async handler.
+    if(boundp('RBIpc) && ipcIsAliveProcess(RBIpc) && RBPort > 0 then
+        ; Already running — print banner immediately (port already known).
+        RBPrintBanner()
     else
-        printf("[vcli] Bridge failed to start. Check RBDPath=%s\n" RBDPath)
+        ; Starting fresh — set flag so RBIpcErrHandler prints banner on PORT arrival.
+        RBShowBanner = t
+        RBStart()
+        unless(boundp('RBIpc) && ipcIsAliveProcess(RBIpc)
+            printf("[vcli] Bridge failed to start. Check RBDPath=%s\n" RBDPath)
+            RBShowBanner = nil
+        )
     )
 )
 
-; On every load: reset legacy fields, resolve daemon path, restart bridge, show banner.
-RBPython = ""
-RBDPath = strcat(getShellEnvVar("HOME") "/.cargo/bin/virtuoso-daemon")
-when(boundp('RBIpc) && ipcIsAliveProcess(RBIpc) RBStop())
-vcli()
+; ============================================================================
+; Auto-start on every load(): stop stale daemon, reset path, start fresh.
+; Wrapped in a procedure so no intermediate return values echo in CIW.
+; ============================================================================
+
+procedure(_RBAutoStart()
+    RBPython = ""
+    RBDPath = strcat(getShellEnvVar("HOME") "/.cargo/bin/virtuoso-daemon")
+    when(boundp('RBIpc) && ipcIsAliveProcess(RBIpc) RBStop())
+    vcli()
+)
+_RBAutoStart()

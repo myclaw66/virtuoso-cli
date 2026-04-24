@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.4] - 2026-04-24
+
+### Fixed
+- **`vcli tunnel start` SSH upload bug** — `upload()` and `upload_text()` were passing "sh", "-c", and command as three separate arguments to SSH, which concatenated them without quotes, breaking commands with `&&`. Now passes `"sh -c 'command'"` as a single argument.
+
+### Added
+- **SSH port in RAMIC Bridge banner** — `ramic_bridge.il` now displays the SSH port number in the Ready banner, making it easier to extract connection parameters at a glance.
+- **`tunnel-connect` skill updated** — documents how to connect from the banner, extracting Session, Port, and SSH values directly.
+
 ## [0.3.0] - 2026-04-19
 
 ### Added

@@ -138,9 +138,11 @@ impl SSHRunner {
 
         let mut ssh = self.build_ssh_cmd();
         let quoted_dir = shell_quote(&remote_dir);
-        ssh.arg("sh").arg("-c").arg(format!(
-            "mkdir -p {quoted_dir} && cd {quoted_dir} && tar xf -"
-        ));
+        // Must pass "sh -c 'command'" as a single argument to SSH,
+        // otherwise "sh", "-c", "command" are concatenated without quotes,
+        // breaking commands with &&.
+        let inner_cmd = format!("mkdir -p {quoted_dir} && cd {quoted_dir} && tar xf -");
+        ssh.arg(format!("sh -c {}", shell_quote(&inner_cmd)));
         ssh.stdin(tar_stdout);
 
         let output = ssh
@@ -164,7 +166,8 @@ impl SSHRunner {
             .to_string_lossy();
 
         let quoted_dir = shell_quote(&remote_dir);
-        let mkdir = self.run_command(&format!("mkdir -p {quoted_dir}"), None)?;
+        let mkdir_cmd = format!("mkdir -p {quoted_dir}");
+        let mkdir = self.run_command(&mkdir_cmd, None)?;
         if !mkdir.success {
             return Err(VirtuosoError::Ssh(format!(
                 "failed to create remote dir: {}",
@@ -174,9 +177,10 @@ impl SSHRunner {
 
         let mut cmd = self.build_ssh_cmd();
         let quoted_remote = shell_quote(remote);
-        cmd.arg("sh")
-            .arg("-c")
-            .arg(format!("cat > {quoted_remote}"));
+        // Must pass "sh -c 'command'" as a single argument to SSH,
+        // otherwise "sh", "-c", "command" are concatenated without quotes,
+        // breaking commands with &&.
+        cmd.arg(format!("sh -c {}", shell_quote(&format!("cat > {quoted_remote}"))));
 
         let output = cmd
             .stdin(Stdio::piped())

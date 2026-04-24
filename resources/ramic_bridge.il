@@ -42,6 +42,17 @@ unless(boundp('RBIpc) RBIpc = 'unbound)
 ; Session management — persist across reloads so session_id stays stable
 unless(boundp('RBSessionId)   RBSessionId   = "")
 unless(boundp('RBSessionSeq)  RBSessionSeq  = 0)
+; SSH port for tunnel connection — read from env or default to 2222
+unless(boundp('RBsshPort)
+    RBsshPort = let((envPort)
+        envPort = getShellEnvVar("RB_SSH_PORT")
+        if(envPort then
+            atoi(envPort)
+        else
+            2222
+        )
+    )
+)
 
 procedure(RBSendCallback(msg)
   ; Write result to a temp file pair instead of ipcWriteProcess — works around
@@ -395,6 +406,7 @@ procedure(RBPrintBanner()
         printf("├─────────────────────────────────────────┤\n")
         printf("│  Session : %-29s │\n" RBSessionId)
         printf("│  Port    : %-29d │\n" RBPort)
+        printf("│  SSH     : %-29d │\n" RBsshPort)
         printf("│  Version : %-29s │\n" ver)
         printf("│  Daemon  : %-29s │\n" daemonDisp)
         printf("├─────────────────────────────────────────┤\n")
